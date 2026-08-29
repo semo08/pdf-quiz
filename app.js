@@ -141,11 +141,11 @@ function initUploadScreen() {
 }
 
 let selectedPDFFiles = [];
-let parsedSetName = '정처기-실기-문제집';
+let parsedSetName = '문제집';
 
 function resetUploadScreen() {
   selectedPDFFiles = [];
-  parsedSetName = '정처기-실기-문제집';
+  parsedSetName = '문제집';
   document.getElementById('input-pdf').value = '';
   document.getElementById('pdf-filelist').innerHTML = '';
   document.getElementById('btn-parse').classList.add('hidden');
@@ -339,7 +339,7 @@ function deleteProblem() {
 
 function saveAndStart() {
   const nameInput = document.getElementById('set-name-input');
-  const name = nameInput?.value.trim() || '정처기-실기-문제집';
+  const name = nameInput?.value.trim() || '문제집';
 
   // JSON 다운로드
   const blob = new Blob([JSON.stringify(appData, null, 2)], { type: 'application/json' });
