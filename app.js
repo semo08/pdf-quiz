@@ -141,6 +141,19 @@ function initUploadScreen() {
 }
 
 let selectedPDFFiles = [];
+let parsedSetName = '정처기-실기-문제집';
+
+function resetUploadScreen() {
+  selectedPDFFiles = [];
+  parsedSetName = '정처기-실기-문제집';
+  document.getElementById('input-pdf').value = '';
+  document.getElementById('pdf-filelist').innerHTML = '';
+  document.getElementById('btn-parse').classList.add('hidden');
+  document.getElementById('btn-parse').disabled = false;
+  document.getElementById('parse-progress').classList.add('hidden');
+  document.getElementById('progress-bar').style.width = '0%';
+  document.getElementById('progress-label').textContent = '파싱 중...';
+}
 
 function handlePDFFiles(files) {
   selectedPDFFiles = [...files].filter(f => f.name.endsWith('.pdf'));
@@ -154,6 +167,10 @@ function handlePDFFiles(files) {
   }
   listEl.innerHTML = selectedPDFFiles.map(f => `<div class="file-ok">✓ ${f.name}</div>`).join('');
   btnParse.classList.remove('hidden');
+
+  // PDF 파일명에서 기본 문제집 이름 생성
+  const names = selectedPDFFiles.map(f => f.name.replace(/\.pdf$/i, ''));
+  parsedSetName = names.length === 1 ? names[0] : names.join(', ');
 }
 
 async function handleJSONFile(file) {
@@ -214,6 +231,8 @@ function initReviewScreen() {
 
 function showReviewScreen() {
   showScreen('screen-review');
+  const nameInput = document.getElementById('set-name-input');
+  if (nameInput) nameInput.value = parsedSetName;
   renderReviewTable();
 }
 
@@ -263,6 +282,11 @@ function closeModal() {
   editingProbId = null;
 }
 
+function openEditModalFromQuiz() {
+  if (currentProbId == null) return;
+  openEditModal(currentProbId);
+}
+
 function saveEdit() {
   const p = appData.problems.find(p => p.id === editingProbId);
   if (!p) return;
@@ -273,15 +297,44 @@ function saveEdit() {
   p.explanation = document.getElementById('edit-explanation').value.trim() || null;
   const cat = CATEGORY_MAP.find(c => c.id === p.category);
   p.language = cat?.language || null;
+
+  // 현재 세트가 있으면 localStorage에 즉시 저장
+  if (currentSetId) {
+    localStorage.setItem(setDataKey(currentSetId), JSON.stringify(appData));
+  }
+
   closeModal();
-  renderReviewTable();
+
+  // 퀴즈 화면에서 편집한 경우 문제 다시 렌더링
+  const activeScreen = document.querySelector('.screen.active');
+  if (activeScreen?.id === 'screen-quiz') {
+    showProblem(editingProbId || currentProbId);
+    renderCategoryNav();
+  } else {
+    renderReviewTable();
+  }
 }
 
 function deleteProblem() {
   if (!confirm('이 문제를 삭제할까요?')) return;
   appData.problems = appData.problems.filter(p => p.id !== editingProbId);
+
+  if (currentSetId) {
+    localStorage.setItem(setDataKey(currentSetId), JSON.stringify(appData));
+  }
+
   closeModal();
-  renderReviewTable();
+
+  const activeScreen = document.querySelector('.screen.active');
+  if (activeScreen?.id === 'screen-quiz') {
+    currentProbId = null;
+    renderCategoryNav();
+    renderProblemNav(currentCatId);
+    const probs = appData.problems.filter(p => p.category === currentCatId);
+    if (probs.length) showProblem(probs[0].id);
+  } else {
+    renderReviewTable();
+  }
 }
 
 function saveAndStart() {
@@ -321,6 +374,7 @@ function initQuizScreen() {
   document.getElementById('btn-next').addEventListener('click', goNextProblem);
   document.getElementById('btn-back-upload').addEventListener('click', () => {
     localStorage.removeItem(LS_ACTIVE_SET);
+    resetUploadScreen();
     showScreen('screen-upload');
     renderSavedSets();
   });
@@ -334,19 +388,49 @@ function startQuiz() {
   showScreen('screen-quiz');
 }
 
+// 사이드바: 전체 문제집 목록 → 각 문제집의 카테고리 트리
 function renderCategoryNav() {
   const nav = document.getElementById('category-nav');
-  nav.innerHTML = appData.categories
-    .filter(c => appData.problems.some(p => p.category === c.id))
-    .map(c => {
-      const probs = appData.problems.filter(p => p.category === c.id);
-      const done  = probs.filter(p => progress[p.id]).length;
-      return `<div class="cat-item ${c.id === currentCatId ? 'active' : ''}"
-               onclick="selectCategory('${c.id}')">
+  const index = getSetsIndex();
+
+  nav.innerHTML = index.map(setMeta => {
+    let setData, setProg;
+    try {
+      setData = JSON.parse(localStorage.getItem(setDataKey(setMeta.id)) || 'null');
+    } catch { return ''; }
+    if (!setData) return '';
+    const isActiveSet = setMeta.id === currentSetId;
+    setProg = isActiveSet ? progress : JSON.parse(localStorage.getItem(setProgKey(setMeta.id)) || '{}');
+
+    const cats = (setData.categories || []).filter(c => setData.problems.some(p => p.category === c.id));
+    const catRows = cats.map(c => {
+      const probs = setData.problems.filter(p => p.category === c.id);
+      const done  = probs.filter(p => setProg[p.id]).length;
+      const isActiveCat = isActiveSet && c.id === currentCatId;
+      return `<div class="sidebar-cat-item ${isActiveCat ? 'active' : ''}"
+                   onclick="selectCategoryInSet('${setMeta.id}','${c.id}')">
         <span>${c.emoji} ${c.name}</span>
         <span class="cat-progress">${done}/${probs.length}</span>
       </div>`;
     }).join('');
+
+    return `<div class="sidebar-set-group">
+      <div class="sidebar-set-header ${isActiveSet ? 'active' : ''}">${escHtml(setMeta.name)}</div>
+      ${catRows}
+    </div>`;
+  }).join('');
+}
+
+function selectCategoryInSet(setId, catId) {
+  if (setId !== currentSetId) {
+    const raw = localStorage.getItem(setDataKey(setId));
+    if (!raw) return;
+    appData = JSON.parse(raw);
+    currentSetId = setId;
+    progress = JSON.parse(localStorage.getItem(setProgKey(setId)) || '{}');
+    localStorage.setItem(LS_ACTIVE_SET, setId);
+  }
+  selectCategory(catId);
 }
 
 function selectCategory(catId) {
@@ -360,7 +444,7 @@ function selectCategory(catId) {
 
 function renderProblemNav(catId) {
   const probs = appData.problems.filter(p => p.category === catId);
-  const cat = appData.categories.find(c => c.id === catId);
+  const cat   = appData.categories.find(c => c.id === catId);
   document.getElementById('problem-nav-label').textContent = cat?.name || '';
   document.getElementById('problem-nav').innerHTML = probs.map((p, i) =>
     `<div class="prob-btn ${p.id === currentProbId ? 'active' : ''} ${progress[p.id] ? 'correct' : ''}"
@@ -373,6 +457,7 @@ function showProblem(probId) {
   if (!p) return;
   currentProbId = probId;
 
+  renderCategoryNav();
   renderProblemNav(p.category);
 
   const catProbs = appData.problems.filter(pr => pr.category === p.category);
@@ -475,6 +560,19 @@ function goNextProblem() {
   const next = catProbs[idx + 1];
   if (next) showProblem(next.id);
   else alert('이 카테고리의 마지막 문제입니다! 🎉');
+}
+
+function downloadCurrentSetJSON() {
+  if (!currentSetId) return;
+  const meta = getSetsIndex().find(s => s.id === currentSetId);
+  const name = meta?.name || '문제집';
+  const blob = new Blob([JSON.stringify(appData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function copyCode() {

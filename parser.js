@@ -1,14 +1,11 @@
 // PDF 파싱 모듈 — pdf.js CDN 사용
 
 const CATEGORY_MAP = [
-  { pattern: /_01_/,            id: 'keyword',  name: '키워드 찾기', emoji: '📝', language: null },
-  { pattern: /_02_SQL/i,        id: 'sql',      name: 'SQL',         emoji: '🗄',  language: 'sql' },
-  { pattern: /_03_.*제어문/,    id: 'c_ctrl',   name: '제어문 (C)',  emoji: '⚙️', language: 'c' },
-  { pattern: /_04_.*포인터/,    id: 'c_ptr',    name: '포인터 (C)',  emoji: '🔷', language: 'c' },
-  { pattern: /_05_.*구조체/,    id: 'c_struct', name: '구조체 (C)',  emoji: '📦', language: 'c' },
-  { pattern: /_06_.*함수/,      id: 'c_func',   name: '사용자함수',  emoji: '🔧', language: 'c' },
-  { pattern: /_07_.*JAVA/i,     id: 'java',     name: 'JAVA',        emoji: '☕', language: 'java' },
-  { pattern: /_08_.*Python/i,   id: 'python',   name: 'Python',      emoji: '🐍', language: 'python' },
+  { pattern: /_08_.*Python/i,          id: 'python', name: 'Python',     emoji: '🐍', language: 'python' },
+  { pattern: /_(03|04|05|06)_/,        id: 'c',      name: 'C',          emoji: '⚙️', language: 'c' },
+  { pattern: /_02_SQL/i,               id: 'sql',    name: 'SQL',        emoji: '🗄',  language: 'sql' },
+  { pattern: /_07_.*JAVA/i,            id: 'java',   name: 'Java',       emoji: '☕', language: 'java' },
+  { pattern: /_01_/,                   id: 'plain',  name: 'Plain text', emoji: '📝', language: null },
 ];
 
 const ALL_CATEGORIES = CATEGORY_MAP.map(({ id, name, emoji, language }) => ({ id, name, emoji, language }));
@@ -17,7 +14,7 @@ function detectCategory(filename) {
   for (const cat of CATEGORY_MAP) {
     if (cat.pattern.test(filename)) return cat;
   }
-  return { id: 'keyword', name: '기타', emoji: '📄', language: null };
+  return { id: 'plain', name: 'Plain text', emoji: '📝', language: null };
 }
 
 // pdf.js로 PDF 텍스트 추출 (줄 단위로 복원)
@@ -56,43 +53,63 @@ function groupIntoLines(items) {
     rowMap.get(key).push({
       x: item.transform[4],
       str: item.str,
-      w: item.width * Math.abs(item.transform[0]), // 렌더링된 실제 너비
+      w: item.width * Math.abs(item.transform[0]),
     });
   }
 
-  // y 내림차순 정렬 (PDF 좌표계: 아래가 0)
-  return [...rowMap.entries()]
+  // y 내림차순 정렬 후 각 줄 x 정렬
+  const rows = [...rowMap.entries()]
     .sort((a, b) => b[0] - a[0])
     .map(([, lineItems]) => {
       lineItems.sort((a, b) => a.x - b.x);
-      if (!lineItems.length) return '';
+      return lineItems;
+    });
 
-      // 문자 하나의 평균 너비 추정
-      let charW = 0;
-      for (const it of lineItems) {
-        if (it.str.trim().length > 0 && it.w > 0) {
-          charW = it.w / it.str.length;
-          break;
+  // 전체 문서 기준 평균 문자 너비
+  let totalW = 0, totalChars = 0;
+  for (const row of rows) {
+    for (const it of row) {
+      if (it.str.trim().length >= 2 && it.w > 0) {
+        totalW += it.w; totalChars += it.str.length;
+      }
+    }
+  }
+  const charW = totalChars > 0 ? totalW / totalChars : 8;
+
+  // 모든 줄의 첫 비공백 아이템 중 최솟값 → 들여쓰기 기준 x
+  let baseX = Infinity;
+  for (const row of rows) {
+    const first = row.find(it => it.str.trim().length > 0);
+    if (first) baseX = Math.min(baseX, first.x);
+  }
+  if (!isFinite(baseX)) baseX = 0;
+
+  return rows.map(lineItems => {
+    if (!lineItems.length) return '';
+
+    let result = '';
+    let prevEndX = null;
+
+    for (const item of lineItems) {
+      if (prevEndX === null) {
+        // 첫 토큰: baseX 기준으로 들여쓰기 추가
+        const indent = item.x - baseX;
+        if (indent > charW * 0.5) {
+          result += ' '.repeat(Math.max(0, Math.round(indent / charW)));
+        }
+      } else {
+        // 이후 토큰: 이전 토큰 끝과의 간격
+        const gap = item.x - prevEndX;
+        if (gap > charW * 0.4) {
+          result += ' '.repeat(Math.max(1, Math.round(gap / charW)));
         }
       }
+      result += item.str;
+      prevEndX = item.x + (item.w > 0 ? item.w : item.str.length * charW);
+    }
 
-      let result = '';
-      let prevEndX = null;
-
-      for (const item of lineItems) {
-        if (prevEndX !== null && charW > 0) {
-          const gap = item.x - prevEndX;
-          if (gap > charW * 0.4) {
-            result += ' '.repeat(Math.max(1, Math.round(gap / charW)));
-          }
-        }
-        result += item.str;
-        prevEndX = item.x + (item.w > 0 ? item.w : item.str.length * (charW || 6));
-      }
-
-      return result || lineItems.map(i => i.str).join('');
-    })
-    .filter(l => l.trim() !== '');
+    return result || lineItems.map(i => i.str).join('');
+  }).filter(l => l.trim() !== '');
 }
 
 // 줄 배열에서 문제 파싱
@@ -129,7 +146,7 @@ function parseProblems(lines, categoryId, language) {
 
 // 하나의 문제 청크에서 질문/코드/정답/해설 추출
 function extractProblemParts(lines, categoryId, language) {
-  const isCode = ['c_ctrl', 'c_ptr', 'c_struct', 'c_func', 'java', 'python', 'sql'].includes(categoryId);
+  const isCode = ['c', 'java', 'python', 'sql'].includes(categoryId);
 
   const codeStartKeywords = [
     '#include', 'public class', 'public static', 'class ', 'int main',
@@ -211,8 +228,34 @@ function extractProblemParts(lines, categoryId, language) {
 
   const question = questionLines
     .join('\n')
-    .replace(/^\d+\.\s*/, '')  // 첫 줄 문제 번호 제거
+    .replace(/^\d+\.\s*/, '')
     .trim();
+
+  // 코드 공통 들여쓰기 제거 + 들여쓰기 단위를 2칸으로 정규화
+  if (codeLines.length > 0) {
+    const nonEmpty = codeLines.filter(l => l.trim().length > 0);
+    if (nonEmpty.length > 0) {
+      // 1. 공통 최소 들여쓰기 제거
+      const minIndent = Math.min(...nonEmpty.map(l => (l.match(/^( *)/) || ['', ''])[1].length));
+      if (minIndent > 0) codeLines = codeLines.map(l => l.slice(minIndent));
+
+      // 2. 들여쓰기 단위 감지 (가장 작은 비-0 들여쓰기)
+      const indents = nonEmpty
+        .map(l => (l.match(/^( *)/) || ['', ''])[1].length)
+        .filter(n => n > 0);
+      if (indents.length > 0) {
+        const unit = Math.min(...indents);
+        if (unit !== 2) {
+          // 각 줄의 들여쓰기를 2칸 단위로 변환
+          codeLines = codeLines.map(l => {
+            const spaces = (l.match(/^( *)/) || ['', ''])[1].length;
+            const level = Math.round(spaces / unit);
+            return ' '.repeat(level * 2) + l.trimStart();
+          });
+        }
+      }
+    }
+  }
 
   return {
     question: question || '(문제 내용 확인 필요)',
