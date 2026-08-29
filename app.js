@@ -1,12 +1,40 @@
 // ===== STATE =====
 let appData = { categories: [], problems: [] };
-let progress = {};       // { problemId: true } — 맞은 문제 기록
+let progress = {};
 let currentCatId = null;
 let currentProbId = null;
 let editingProbId = null;
+let currentSetId = null;
 
-const LS_DATA = 'jegi-data';
-const LS_PROGRESS = 'jegi-progress';
+// ===== STORAGE =====
+const LS_SETS_INDEX = 'jegi-sets-index';
+const LS_ACTIVE_SET = 'jegi-active-set';
+const setDataKey = id => `jegi-set-${id}`;
+const setProgKey = id => `jegi-prog-${id}`;
+
+function getSetsIndex() {
+  try { return JSON.parse(localStorage.getItem(LS_SETS_INDEX)) || []; }
+  catch { return []; }
+}
+function saveSetsIndex(idx) { localStorage.setItem(LS_SETS_INDEX, JSON.stringify(idx)); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+
+// 이전 단일 세트 데이터 마이그레이션
+function migrateOldData() {
+  const oldData = localStorage.getItem('jegi-data');
+  if (oldData && !localStorage.getItem(LS_SETS_INDEX)) {
+    try {
+      const parsed = JSON.parse(oldData);
+      const id = uid();
+      saveSetsIndex([{ id, name: '기존 문제집', createdAt: Date.now(), problemCount: parsed.problems?.length || 0 }]);
+      localStorage.setItem(setDataKey(id), oldData);
+      const oldProg = localStorage.getItem('jegi-progress');
+      if (oldProg) localStorage.setItem(setProgKey(id), oldProg);
+    } catch {}
+    localStorage.removeItem('jegi-data');
+    localStorage.removeItem('jegi-progress');
+  }
+}
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
@@ -14,15 +42,23 @@ document.addEventListener('DOMContentLoaded', () => {
   initReviewScreen();
   initQuizScreen();
 
-  // 이전 세션 캐시 확인
-  const cached = localStorage.getItem(LS_DATA);
-  if (cached) {
-    try {
-      appData = JSON.parse(cached);
-      progress = JSON.parse(localStorage.getItem(LS_PROGRESS) || '{}');
-      document.getElementById('btn-continue').classList.remove('hidden');
-    } catch { localStorage.removeItem(LS_DATA); }
+  migrateOldData();
+
+  // 마지막 세션 자동 복원
+  const activeId = localStorage.getItem(LS_ACTIVE_SET);
+  if (activeId) {
+    const raw = localStorage.getItem(setDataKey(activeId));
+    if (raw) {
+      try {
+        appData = JSON.parse(raw);
+        currentSetId = activeId;
+        progress = JSON.parse(localStorage.getItem(setProgKey(activeId)) || '{}');
+        startQuiz();
+        return;
+      } catch {}
+    }
   }
+  renderSavedSets();
 });
 
 // ===== SCREEN HELPERS =====
@@ -31,42 +67,77 @@ function showScreen(id) {
   document.getElementById(id).classList.add('active');
 }
 
+// ===== SAVED SETS (업로드 화면) =====
+function renderSavedSets() {
+  const index = getSetsIndex();
+  const section = document.getElementById('saved-sets-section');
+  const list = document.getElementById('saved-sets-list');
+
+  if (!index.length) { section.classList.add('hidden'); return; }
+  section.classList.remove('hidden');
+
+  list.innerHTML = [...index].reverse().map(s => {
+    const prog = JSON.parse(localStorage.getItem(setProgKey(s.id)) || '{}');
+    const done = Object.keys(prog).length;
+    const total = s.problemCount || 0;
+    const pct = total ? Math.round(done / total * 100) : 0;
+    const date = new Date(s.createdAt).toLocaleDateString('ko-KR');
+    return `<div class="saved-set-item" onclick="loadSet('${s.id}')">
+      <div class="saved-set-info">
+        <div class="saved-set-name">${escHtml(s.name)}</div>
+        <div class="saved-set-meta">${total}문제 · ${date}</div>
+      </div>
+      <span class="saved-set-pct">${pct}%</span>
+      <button class="btn-del-set" onclick="deleteSetEntry(event,'${s.id}')">×</button>
+    </div>`;
+  }).join('');
+}
+
+function loadSet(setId) {
+  const raw = localStorage.getItem(setDataKey(setId));
+  if (!raw) { alert('데이터를 불러올 수 없습니다.'); return; }
+  appData = JSON.parse(raw);
+  currentSetId = setId;
+  progress = JSON.parse(localStorage.getItem(setProgKey(setId)) || '{}');
+  startQuiz();
+}
+
+function deleteSetEntry(e, setId) {
+  e.stopPropagation();
+  if (!confirm('이 문제집을 삭제할까요?')) return;
+  saveSetsIndex(getSetsIndex().filter(s => s.id !== setId));
+  localStorage.removeItem(setDataKey(setId));
+  localStorage.removeItem(setProgKey(setId));
+  if (localStorage.getItem(LS_ACTIVE_SET) === setId) localStorage.removeItem(LS_ACTIVE_SET);
+  renderSavedSets();
+}
+
 // ===== SCREEN 1: UPLOAD =====
 function initUploadScreen() {
   const dropPDF  = document.getElementById('drop-pdf');
   const inputPDF = document.getElementById('input-pdf');
   const dropJSON = document.getElementById('drop-json');
-  const inputJSON= document.getElementById('input-json');
-  const btnContinue = document.getElementById('btn-continue');
+  const inputJSON = document.getElementById('input-json');
   const btnParse = document.getElementById('btn-parse');
 
-  // PDF 클릭/드롭
   dropPDF.addEventListener('click', () => inputPDF.click());
   inputPDF.addEventListener('change', () => handlePDFFiles(inputPDF.files));
   dropPDF.addEventListener('dragover', e => { e.preventDefault(); dropPDF.classList.add('dragover'); });
   dropPDF.addEventListener('dragleave', () => dropPDF.classList.remove('dragover'));
   dropPDF.addEventListener('drop', e => {
-    e.preventDefault();
-    dropPDF.classList.remove('dragover');
-    handlePDFFiles(e.dataTransfer.files);
+    e.preventDefault(); dropPDF.classList.remove('dragover'); handlePDFFiles(e.dataTransfer.files);
   });
 
-  // JSON 클릭/드롭
   dropJSON.addEventListener('click', () => inputJSON.click());
   inputJSON.addEventListener('change', () => handleJSONFile(inputJSON.files[0]));
   dropJSON.addEventListener('dragover', e => { e.preventDefault(); dropJSON.classList.add('dragover'); });
   dropJSON.addEventListener('dragleave', () => dropJSON.classList.remove('dragover'));
   dropJSON.addEventListener('drop', e => {
-    e.preventDefault();
-    dropJSON.classList.remove('dragover');
+    e.preventDefault(); dropJSON.classList.remove('dragover');
     if (e.dataTransfer.files[0]) handleJSONFile(e.dataTransfer.files[0]);
   });
 
   btnParse.addEventListener('click', e => { e.stopPropagation(); startParsing(); });
-  btnContinue.addEventListener('click', () => {
-    progress = JSON.parse(localStorage.getItem(LS_PROGRESS) || '{}');
-    startQuiz();
-  });
 }
 
 let selectedPDFFiles = [];
@@ -81,10 +152,7 @@ function handlePDFFiles(files) {
     btnParse.classList.add('hidden');
     return;
   }
-
-  listEl.innerHTML = selectedPDFFiles.map(f =>
-    `<div class="file-ok">✓ ${f.name}</div>`
-  ).join('');
+  listEl.innerHTML = selectedPDFFiles.map(f => `<div class="file-ok">✓ ${f.name}</div>`).join('');
   btnParse.classList.remove('hidden');
 }
 
@@ -94,10 +162,17 @@ async function handleJSONFile(file) {
     const text = await file.text();
     const data = JSON.parse(text);
     if (!data.problems || !data.categories) throw new Error('형식 오류');
+
+    const setId = uid();
+    const name = file.name.replace('.json', '');
+    const index = getSetsIndex();
+    index.push({ id: setId, name, createdAt: Date.now(), problemCount: data.problems.length });
+    saveSetsIndex(index);
+    localStorage.setItem(setDataKey(setId), JSON.stringify(data));
+
     appData = data;
+    currentSetId = setId;
     progress = {};
-    localStorage.setItem(LS_DATA, JSON.stringify(appData));
-    localStorage.removeItem(LS_PROGRESS);
     startQuiz();
   } catch {
     alert('올바른 문제집 JSON 파일이 아닙니다.');
@@ -122,7 +197,6 @@ async function startParsing() {
     appData = data;
     bar.style.width = '100%';
     label.textContent = `완료! ${data.problems.length}개 문제 파싱됨`;
-
     setTimeout(() => showReviewScreen(), 400);
   } catch (e) {
     label.textContent = '오류: ' + e.message;
@@ -133,8 +207,6 @@ async function startParsing() {
 // ===== SCREEN 2: REVIEW =====
 function initReviewScreen() {
   document.getElementById('btn-save-start').addEventListener('click', saveAndStart);
-
-  // 모달 버튼
   document.getElementById('btn-modal-save').addEventListener('click', saveEdit);
   document.getElementById('btn-modal-cancel').addEventListener('click', closeModal);
   document.getElementById('btn-modal-delete').addEventListener('click', deleteProblem);
@@ -178,13 +250,11 @@ function openEditModal(problemId) {
   const p = appData.problems.find(p => p.id === problemId);
   if (!p) return;
   editingProbId = problemId;
-
   document.getElementById('edit-category').value = p.category;
   document.getElementById('edit-question').value = p.question || '';
   document.getElementById('edit-code').value = p.code || '';
   document.getElementById('edit-answer').value = p.answer || '';
   document.getElementById('edit-explanation').value = p.explanation || '';
-
   document.getElementById('edit-modal').classList.remove('hidden');
 }
 
@@ -196,17 +266,13 @@ function closeModal() {
 function saveEdit() {
   const p = appData.problems.find(p => p.id === editingProbId);
   if (!p) return;
-
-  p.category = document.getElementById('edit-category').value;
-  p.question  = document.getElementById('edit-question').value.trim();
-  p.code      = document.getElementById('edit-code').value.trim() || null;
-  p.answer    = document.getElementById('edit-answer').value.trim();
+  p.category    = document.getElementById('edit-category').value;
+  p.question    = document.getElementById('edit-question').value.trim();
+  p.code        = document.getElementById('edit-code').value.trim() || null;
+  p.answer      = document.getElementById('edit-answer').value.trim();
   p.explanation = document.getElementById('edit-explanation').value.trim() || null;
-
-  // 언어도 카테고리에 맞게 업데이트
   const cat = CATEGORY_MAP.find(c => c.id === p.category);
   p.language = cat?.language || null;
-
   closeModal();
   renderReviewTable();
 }
@@ -219,24 +285,33 @@ function deleteProblem() {
 }
 
 function saveAndStart() {
-  // JSON 저장
+  const nameInput = document.getElementById('set-name-input');
+  const name = nameInput?.value.trim() || '정처기-실기-문제집';
+
+  // JSON 다운로드
   const blob = new Blob([JSON.stringify(appData, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = '정처기-실기-문제집.json';
+  a.download = name + '.json';
   a.click();
   URL.revokeObjectURL(url);
 
-  // localStorage에도 저장
-  localStorage.setItem(LS_DATA, JSON.stringify(appData));
-  progress = {};
-  localStorage.removeItem(LS_PROGRESS);
+  // 새 세트로 저장
+  const setId = uid();
+  const index = getSetsIndex();
+  index.push({ id: setId, name, createdAt: Date.now(), problemCount: appData.problems.length });
+  saveSetsIndex(index);
+  localStorage.setItem(setDataKey(setId), JSON.stringify(appData));
 
+  currentSetId = setId;
+  progress = {};
   startQuiz();
 }
 
 // ===== SCREEN 3: QUIZ =====
+const LANG_NAMES = { c: 'C', java: 'Java', python: 'Python', sql: 'SQL' };
+
 function initQuizScreen() {
   document.getElementById('btn-check').addEventListener('click', checkAnswer);
   document.getElementById('answer-input').addEventListener('keydown', e => {
@@ -244,15 +319,17 @@ function initQuizScreen() {
   });
   document.getElementById('btn-explanation').addEventListener('click', toggleExplanation);
   document.getElementById('btn-next').addEventListener('click', goNextProblem);
-  document.getElementById('btn-back-upload').addEventListener('click', () => showScreen('screen-upload'));
+  document.getElementById('btn-back-upload').addEventListener('click', () => {
+    localStorage.removeItem(LS_ACTIVE_SET);
+    showScreen('screen-upload');
+    renderSavedSets();
+  });
 }
 
 function startQuiz() {
+  if (currentSetId) localStorage.setItem(LS_ACTIVE_SET, currentSetId);
   renderCategoryNav();
-  // 첫 카테고리의 첫 문제 선택
-  const firstCat = appData.categories.find(c =>
-    appData.problems.some(p => p.category === c.id)
-  );
+  const firstCat = appData.categories.find(c => appData.problems.some(p => p.category === c.id));
   if (firstCat) selectCategory(firstCat.id);
   showScreen('screen-quiz');
 }
@@ -276,8 +353,6 @@ function selectCategory(catId) {
   currentCatId = catId;
   renderCategoryNav();
   renderProblemNav(catId);
-
-  // 해당 카테고리의 첫 번째 미완료 문제, 없으면 첫 번째 문제
   const probs = appData.problems.filter(p => p.category === catId);
   const first = probs.find(p => !progress[p.id]) || probs[0];
   if (first) showProblem(first.id);
@@ -298,10 +373,8 @@ function showProblem(probId) {
   if (!p) return;
   currentProbId = probId;
 
-  // 문제 번호 네비 업데이트
   renderProblemNav(p.category);
 
-  // 문제 카운터
   const catProbs = appData.problems.filter(pr => pr.category === p.category);
   const idx = catProbs.findIndex(pr => pr.id === p.id) + 1;
   const cat = appData.categories.find(c => c.id === p.category);
@@ -310,19 +383,22 @@ function showProblem(probId) {
   document.getElementById('problem-counter').textContent = `${idx} / ${catProbs.length}`;
   document.getElementById('problem-question').textContent = p.question || '';
 
-  // 코드 블록
-  const codeWrap = document.getElementById('code-wrap');
-  const codeEl   = document.getElementById('code-content');
+  const codeWrap  = document.getElementById('code-wrap');
+  const codeEl    = document.getElementById('code-content');
+  const langLabel = document.getElementById('code-lang-label');
   if (p.code) {
+    codeEl.removeAttribute('data-highlighted');
     codeEl.textContent = p.code;
     codeEl.className = p.language ? `language-${p.language}` : '';
     hljs.highlightElement(codeEl);
-    codeWrap.classList.remove('hidden');
+    langLabel.textContent = LANG_NAMES[p.language] || p.language || 'Code';
+    codeWrap.className = 'code-wrap' + (p.language ? ` lang-${p.language}` : '');
+    document.getElementById('btn-copy').classList.remove('copied');
+    document.getElementById('btn-copy').textContent = '복사';
   } else {
-    codeWrap.classList.add('hidden');
+    codeWrap.className = 'code-wrap hidden';
   }
 
-  // 입력 초기화
   const input = document.getElementById('answer-input');
   input.value = '';
   input.disabled = false;
@@ -350,10 +426,10 @@ function checkAnswer() {
   if (!userVal.trim()) return;
 
   const correct = normalizeAnswer(userVal) === normalizeAnswer(p.answer);
-  const result = document.getElementById('feedback-result');
+  const result   = document.getElementById('feedback-result');
   const feedback = document.getElementById('feedback');
-  const btnExpl = document.getElementById('btn-explanation');
-  const btnNext = document.getElementById('btn-next');
+  const btnExpl  = document.getElementById('btn-explanation');
+  const btnNext  = document.getElementById('btn-next');
 
   input.disabled = true;
   input.classList.add(correct ? 'correct' : 'wrong');
@@ -365,15 +441,12 @@ function checkAnswer() {
     : `❌ 틀렸어요 — 정답: ${p.answer}`;
 
   feedback.classList.remove('hidden');
-
-  if (!correct && p.explanation) {
-    btnExpl.classList.remove('hidden');
-  }
+  if (!correct && p.explanation) btnExpl.classList.remove('hidden');
   btnNext.classList.remove('hidden');
 
   if (correct) {
     progress[p.id] = true;
-    localStorage.setItem(LS_PROGRESS, JSON.stringify(progress));
+    if (currentSetId) localStorage.setItem(setProgKey(currentSetId), JSON.stringify(progress));
     renderCategoryNav();
     renderProblemNav(p.category);
   }
@@ -383,7 +456,6 @@ function toggleExplanation() {
   const expl = document.getElementById('explanation-text');
   const btn  = document.getElementById('btn-explanation');
   const p    = appData.problems.find(p => p.id === currentProbId);
-
   const isOpen = !expl.classList.contains('hidden');
   if (isOpen) {
     expl.classList.add('hidden');
@@ -403,6 +475,17 @@ function goNextProblem() {
   const next = catProbs[idx + 1];
   if (next) showProblem(next.id);
   else alert('이 카테고리의 마지막 문제입니다! 🎉');
+}
+
+function copyCode() {
+  const p = appData.problems.find(p => p.id === currentProbId);
+  if (!p?.code) return;
+  navigator.clipboard.writeText(p.code).then(() => {
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = '복사됨 ✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '복사'; btn.classList.remove('copied'); }, 1500);
+  });
 }
 
 // ===== UTILS =====

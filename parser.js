@@ -41,28 +41,57 @@ async function extractLinesFromPDF(file, onProgress) {
   return allLines;
 }
 
-// 텍스트 아이템을 y좌표 기준으로 줄로 묶기
+// 텍스트 아이템을 y좌표 기준으로 줄로 묶기 (x 간격으로 공백 복원)
 function groupIntoLines(items) {
   if (!items.length) return [];
 
   const rowMap = new Map();
   for (const item of items) {
     const rawY = item.transform[5];
-    // 같은 줄로 볼 y 범위: ±2px
     let key = null;
     for (const k of rowMap.keys()) {
       if (Math.abs(k - rawY) <= 2) { key = k; break; }
     }
     if (key === null) { key = rawY; rowMap.set(key, []); }
-    rowMap.get(key).push({ x: item.transform[4], str: item.str });
+    rowMap.get(key).push({
+      x: item.transform[4],
+      str: item.str,
+      w: item.width * Math.abs(item.transform[0]), // 렌더링된 실제 너비
+    });
   }
 
   // y 내림차순 정렬 (PDF 좌표계: 아래가 0)
   return [...rowMap.entries()]
     .sort((a, b) => b[0] - a[0])
-    .map(([, items]) =>
-      items.sort((a, b) => a.x - b.x).map(i => i.str).join('')
-    )
+    .map(([, lineItems]) => {
+      lineItems.sort((a, b) => a.x - b.x);
+      if (!lineItems.length) return '';
+
+      // 문자 하나의 평균 너비 추정
+      let charW = 0;
+      for (const it of lineItems) {
+        if (it.str.trim().length > 0 && it.w > 0) {
+          charW = it.w / it.str.length;
+          break;
+        }
+      }
+
+      let result = '';
+      let prevEndX = null;
+
+      for (const item of lineItems) {
+        if (prevEndX !== null && charW > 0) {
+          const gap = item.x - prevEndX;
+          if (gap > charW * 0.4) {
+            result += ' '.repeat(Math.max(1, Math.round(gap / charW)));
+          }
+        }
+        result += item.str;
+        prevEndX = item.x + (item.w > 0 ? item.w : item.str.length * (charW || 6));
+      }
+
+      return result || lineItems.map(i => i.str).join('');
+    })
     .filter(l => l.trim() !== '');
 }
 

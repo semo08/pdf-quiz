@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>정처기 실기 문제풀이</title>
+  <title>PDF-Quiz</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
-  <link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
@@ -15,9 +15,10 @@
       <h1>📚 정처기 실기 문제풀이</h1>
       <p class="upload-subtitle">PDF를 업로드하면 문제풀이 앱으로 변환됩니다.</p>
 
-      <button id="btn-continue" class="btn-continue hidden">
-        📖 이전 문제집 이어하기
-      </button>
+      <div id="saved-sets-section" class="saved-sets-section hidden">
+        <div class="saved-sets-label">📂 저장된 문제집</div>
+        <div id="saved-sets-list" class="saved-sets-list"></div>
+      </div>
 
       <div class="upload-zones">
         <div class="upload-zone" id="drop-pdf">
@@ -53,7 +54,10 @@
         <h2>파싱 결과 검토</h2>
         <p id="review-summary" class="review-summary"></p>
       </div>
-      <button id="btn-save-start" class="btn-primary">완료 + JSON 저장 →</button>
+      <div class="review-header-right">
+        <input id="set-name-input" class="set-name-input" type="text" placeholder="문제집 이름..." value="정처기-실기-문제집" />
+        <button id="btn-save-start" class="btn-primary">완료 + JSON 저장 →</button>
+      </div>
     </div>
 
     <div class="review-table-wrap">
@@ -113,46 +117,49 @@
   <!-- ===== SCREEN 3: QUIZ ===== -->
   <div id="screen-quiz" class="screen">
     <aside id="sidebar">
-      <div class="sidebar-title">📚 정처기 실기</div>
-
+      <div class="sidebar-title">PDF-Quiz</div>
       <nav id="category-nav"></nav>
-
-      <div id="problem-nav-wrap">
-        <div id="problem-nav-label" class="problem-nav-label"></div>
-        <div id="problem-nav" class="problem-nav"></div>
-      </div>
-
       <div class="sidebar-footer">
         <button id="btn-back-upload" class="btn-sidebar-action">⬆ 문제집 바꾸기</button>
       </div>
     </aside>
 
-    <main id="quiz-main">
-      <div id="problem-header">
-        <span id="problem-badge" class="badge"></span>
-        <span id="problem-counter" class="problem-counter"></span>
+    <div class="quiz-body">
+      <div class="problem-tab-bar">
+        <span id="problem-nav-label" class="problem-tab-label"></span>
+        <div id="problem-nav" class="problem-nav-row"></div>
       </div>
-
-      <p id="problem-question" class="problem-question"></p>
-
-      <div id="code-wrap" class="code-wrap hidden">
-        <pre><code id="code-content"></code></pre>
-      </div>
-
-      <div id="answer-area" class="answer-area">
-        <input id="answer-input" type="text" placeholder="출력값 또는 정답 입력 후 Enter..." autocomplete="off" />
-        <button id="btn-check" class="btn-primary">확인</button>
-      </div>
-
-      <div id="feedback" class="feedback hidden">
-        <div id="feedback-result" class="feedback-result"></div>
-        <button id="btn-explanation" class="btn-toggle hidden">해설 보기 ▼</button>
-        <div id="explanation-text" class="explanation-text hidden"></div>
-        <div class="feedback-actions">
-          <button id="btn-next" class="btn-primary hidden">다음 문제 →</button>
+      <main id="quiz-main">
+        <div id="problem-header">
+          <span id="problem-badge" class="badge"></span>
+          <span id="problem-counter" class="problem-counter"></span>
         </div>
-      </div>
-    </main>
+
+        <p id="problem-question" class="problem-question"></p>
+
+        <div id="code-wrap" class="code-wrap hidden">
+          <div class="code-header">
+            <span id="code-lang-label" class="code-lang"></span>
+            <button class="btn-copy" id="btn-copy" onclick="copyCode()">복사</button>
+          </div>
+          <pre><code id="code-content"></code></pre>
+        </div>
+
+        <div id="answer-area" class="answer-area">
+          <input id="answer-input" type="text" placeholder="출력값 또는 정답 입력 후 Enter..." autocomplete="off" />
+          <button id="btn-check" class="btn-primary">확인</button>
+        </div>
+
+        <div id="feedback" class="feedback hidden">
+          <div id="feedback-result" class="feedback-result"></div>
+          <button id="btn-explanation" class="btn-toggle hidden">해설 보기 ▼</button>
+          <div id="explanation-text" class="explanation-text hidden"></div>
+          <div class="feedback-actions">
+            <button id="btn-next" class="btn-primary hidden">다음 문제 →</button>
+          </div>
+        </div>
+      </main>
+    </div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
