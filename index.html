@@ -92,18 +92,25 @@
           <option value="plain">📝 Plain text</option>
         </select>
       </label>
-      <label>문제 (질문)
-        <textarea id="edit-question" rows="3"></textarea>
-      </label>
+      <div class="edit-field-header">
+        <span>문제 (질문)</span>
+        <button type="button" class="btn-preview-toggle" onclick="toggleEditPreview('question')">미리보기</button>
+      </div>
+      <textarea id="edit-question" rows="3"></textarea>
+      <div id="edit-question-preview" class="edit-preview hidden"></div>
+
       <label>코드 (없으면 비워두기)
         <textarea id="edit-code" rows="8" class="code-textarea"></textarea>
       </label>
       <label>정답
-        <input id="edit-answer" type="text" />
+        <textarea id="edit-answer" rows="2"></textarea>
       </label>
-      <label>해설 (없으면 비워두기)
-        <textarea id="edit-explanation" rows="4"></textarea>
-      </label>
+      <div class="edit-field-header">
+        <span>해설 (없으면 비워두기)</span>
+        <button type="button" class="btn-preview-toggle" onclick="toggleEditPreview('explanation')">미리보기</button>
+      </div>
+      <textarea id="edit-explanation" rows="4"></textarea>
+      <div id="edit-explanation-preview" class="edit-preview hidden"></div>
       <div class="modal-actions">
         <button id="btn-modal-delete" class="btn-danger">삭제</button>
         <button id="btn-modal-cancel" class="btn-secondary">취소</button>
@@ -166,6 +173,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="parser.js"></script>
   <script src="app.js"></script>
 </body>

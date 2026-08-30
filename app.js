@@ -1,3 +1,5 @@
+marked.setOptions({ breaks: true });
+
 // ===== STATE =====
 let appData = { categories: [], problems: [] };
 let progress = {};
@@ -274,7 +276,30 @@ function openEditModal(problemId) {
   document.getElementById('edit-code').value = p.code || '';
   document.getElementById('edit-answer').value = p.answer || '';
   document.getElementById('edit-explanation').value = p.explanation || '';
+  // 미리보기 초기화
+  ['question', 'explanation'].forEach(field => {
+    document.getElementById(`edit-${field}-preview`).classList.add('hidden');
+    document.getElementById(`edit-${field}`).classList.remove('hidden');
+    document.querySelector(`[onclick="toggleEditPreview('${field}')"]`).textContent = '미리보기';
+  });
   document.getElementById('edit-modal').classList.remove('hidden');
+}
+
+function toggleEditPreview(field) {
+  const textarea = document.getElementById(`edit-${field}`);
+  const preview  = document.getElementById(`edit-${field}-preview`);
+  const btn      = document.querySelector(`[onclick="toggleEditPreview('${field}')"]`);
+  const isPreview = !preview.classList.contains('hidden');
+  if (isPreview) {
+    preview.classList.add('hidden');
+    textarea.classList.remove('hidden');
+    btn.textContent = '미리보기';
+  } else {
+    preview.innerHTML = marked.parse(textarea.value || '');
+    preview.classList.remove('hidden');
+    textarea.classList.add('hidden');
+    btn.textContent = '편집';
+  }
 }
 
 function closeModal() {
@@ -466,7 +491,7 @@ function showProblem(probId) {
 
   document.getElementById('problem-badge').textContent = `${cat?.emoji || ''} ${cat?.name || p.category}`;
   document.getElementById('problem-counter').textContent = `${idx} / ${catProbs.length}`;
-  document.getElementById('problem-question').textContent = p.question || '';
+  document.getElementById('problem-question').innerHTML = marked.parse(p.question || '');
 
   const codeWrap  = document.getElementById('code-wrap');
   const codeEl    = document.getElementById('code-content');
@@ -492,9 +517,11 @@ function showProblem(probId) {
 
   document.getElementById('btn-check').disabled = false;
   document.getElementById('feedback').classList.add('hidden');
-  document.getElementById('btn-explanation').classList.add('hidden');
+  const btnExplEl = document.getElementById('btn-explanation');
+  btnExplEl.classList.add('hidden');
+  btnExplEl.classList.remove('open');
+  btnExplEl.textContent = '해설 보기 ▼';
   document.getElementById('explanation-text').classList.add('hidden');
-  document.getElementById('btn-explanation').classList.remove('open');
   document.getElementById('btn-next').classList.add('hidden');
 }
 
@@ -547,7 +574,7 @@ function toggleExplanation() {
     btn.textContent = '해설 보기 ▼';
     btn.classList.remove('open');
   } else {
-    expl.textContent = p?.explanation || '';
+    expl.innerHTML = marked.parse(p?.explanation || '');
     expl.classList.remove('hidden');
     btn.textContent = '해설 닫기 ▲';
     btn.classList.add('open');

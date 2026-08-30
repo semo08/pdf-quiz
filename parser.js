@@ -38,7 +38,7 @@ async function extractLinesFromPDF(file, onProgress) {
   return allLines;
 }
 
-// 텍스트 아이템을 y좌표 기준으로 줄로 묶기 (x 간격으로 공백 복원)
+// 텍스트 아이템을 y좌표 기준으로 줄로 묶기 (x 간격으로 공백 복원, 표 감지 포함)
 function groupIntoLines(items) {
   if (!items.length) return [];
 
@@ -84,32 +84,109 @@ function groupIntoLines(items) {
   }
   if (!isFinite(baseX)) baseX = 0;
 
-  return rows.map(lineItems => {
-    if (!lineItems.length) return '';
+  // 각 줄을 텍스트 문자열 + 컬럼 정보로 변환
+  const TABLE_COL_GAP = charW * 4; // 이 이상의 x 간격은 열 구분자로 판단
+  const lineData = rows.map(lineItems => {
+    if (!lineItems.length) return null;
 
-    let result = '';
+    // 텍스트 문자열 생성 (기존 로직)
+    let text = '';
     let prevEndX = null;
-
     for (const item of lineItems) {
       if (prevEndX === null) {
-        // 첫 토큰: baseX 기준으로 들여쓰기 추가
         const indent = item.x - baseX;
         if (indent > charW * 0.5) {
-          result += ' '.repeat(Math.max(0, Math.round(indent / charW)));
+          text += ' '.repeat(Math.max(0, Math.round(indent / charW)));
         }
       } else {
-        // 이후 토큰: 이전 토큰 끝과의 간격
         const gap = item.x - prevEndX;
         if (gap > charW * 0.4) {
-          result += ' '.repeat(Math.max(1, Math.round(gap / charW)));
+          text += ' '.repeat(Math.max(1, Math.round(gap / charW)));
         }
       }
-      result += item.str;
+      text += item.str;
       prevEndX = item.x + (item.w > 0 ? item.w : item.str.length * charW);
     }
+    text = text || lineItems.map(i => i.str).join('');
 
-    return result || lineItems.map(i => i.str).join('');
-  }).filter(l => l.trim() !== '');
+    // 컬럼 분리 (대형 x 간격 기준)
+    const columns = [];
+    let group = [lineItems[0]];
+    for (let i = 1; i < lineItems.length; i++) {
+      const prev = group[group.length - 1];
+      const prevEnd = prev.x + (prev.w > 0 ? prev.w : prev.str.length * charW);
+      if (lineItems[i].x - prevEnd > TABLE_COL_GAP) {
+        columns.push({ x: group[0].x, items: group });
+        group = [lineItems[i]];
+      } else {
+        group.push(lineItems[i]);
+      }
+    }
+    columns.push({ x: group[0].x, items: group });
+
+    return { text, columns };
+  }).filter(d => d !== null && d.text.trim() !== '');
+
+  return convertTablesToMarkdown(lineData, charW);
+}
+
+// 컬럼 아이템 배열을 텍스트로 변환
+function colItemsToText(items, charW) {
+  let text = '', prevEnd = null;
+  for (const item of items) {
+    if (prevEnd !== null && item.x - prevEnd > charW * 0.4) text += ' ';
+    text += item.str;
+    prevEnd = item.x + (item.w > 0 ? item.w : item.str.length * charW);
+  }
+  return text.trim().replace(/\|/g, '\\|'); // 파이프 문자 이스케이프
+}
+
+// 두 줄의 컬럼 x좌표가 비슷한지 확인
+function columnXsMatch(cols1, cols2, tol = 25) {
+  if (Math.abs(cols1.length - cols2.length) > 1) return false;
+  const len = Math.min(cols1.length, cols2.length);
+  return cols1.slice(0, len).every((c, i) => Math.abs(c.x - cols2[i].x) <= tol);
+}
+
+// 연속된 다중컬럼 줄을 마크다운 표로 변환
+function convertTablesToMarkdown(lineData, charW) {
+  const MIN_COLS = 2;
+  const MIN_ROWS = 2;
+  const result = [];
+  let i = 0;
+
+  while (i < lineData.length) {
+    const row = lineData[i];
+    if (row.columns.length >= MIN_COLS) {
+      const run = [row];
+      let j = i + 1;
+      while (j < lineData.length &&
+             lineData[j].columns.length >= MIN_COLS &&
+             columnXsMatch(row.columns, lineData[j].columns)) {
+        run.push(lineData[j]);
+        j++;
+      }
+      if (run.length >= MIN_ROWS) {
+        const numCols = run[0].columns.length;
+        // 헤더 행
+        result.push('| ' + run[0].columns.map(c => colItemsToText(c.items, charW)).join(' | ') + ' |');
+        // 구분선
+        result.push('|' + Array(numCols).fill('---|').join(''));
+        // 데이터 행
+        for (let k = 1; k < run.length; k++) {
+          const cells = Array.from({ length: numCols }, (_, ci) =>
+            ci < run[k].columns.length ? colItemsToText(run[k].columns[ci].items, charW) : ''
+          );
+          result.push('| ' + cells.join(' | ') + ' |');
+        }
+        i = j;
+        continue;
+      }
+    }
+    result.push(row.text);
+    i++;
+  }
+  return result;
 }
 
 // 줄 배열에서 문제 파싱

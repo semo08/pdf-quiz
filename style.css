@@ -315,6 +315,38 @@ body {
   resize: vertical;
 }
 .code-textarea { font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; }
+
+.edit-field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.btn-preview-toggle {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.btn-preview-toggle:hover { background: var(--border); }
+.edit-preview {
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--surface);
+  box-sizing: border-box;
+}
+
 .modal-actions {
   display: flex;
   gap: 8px;
@@ -518,7 +550,31 @@ body {
   font-size: 15px;
   line-height: 1.7;
   margin-bottom: 20px;
-  white-space: pre-wrap;
+}
+.problem-question p { margin: 0 0 8px; }
+.problem-question p:last-child { margin-bottom: 0; }
+
+/* 마크다운 표 공통 */
+.problem-question table,
+.explanation-text table {
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 13px;
+  width: auto;
+}
+.problem-question th,
+.problem-question td,
+.explanation-text th,
+.explanation-text td {
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+.problem-question th,
+.explanation-text th {
+  background: var(--surface);
+  font-weight: 600;
 }
 
 /* Language colors */
@@ -630,9 +686,10 @@ body {
   border-radius: 8px;
   font-size: 13px;
   line-height: 1.7;
-  white-space: pre-wrap;
   color: var(--text-muted);
 }
+.explanation-text p { margin: 0 0 6px; }
+.explanation-text p:last-child { margin-bottom: 0; }
 
 .feedback-actions { display: flex; gap: 8px; }
 
