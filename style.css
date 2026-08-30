@@ -44,8 +44,9 @@ body {
 /* ===== SCREEN 1: UPLOAD ===== */
 #screen-upload {
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   background: var(--surface);
+  overflow-y: auto;
 }
 
 .upload-container {
@@ -53,13 +54,97 @@ body {
   max-width: 680px;
   padding: 32px 24px;
   text-align: center;
+  margin: auto;
 }
 
 .upload-container h1 { font-size: 26px; margin-bottom: 8px; }
 .upload-subtitle { color: var(--text-muted); margin-bottom: 24px; }
 
+/* AI 파싱 프롬프트 카드 */
+.ai-prompt-card {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  margin-top: 28px;
+  text-align: left;
+  overflow: hidden;
+}
+.ai-prompt-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.ai-prompt-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ai-prompt-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: var(--accent);
+  color: #fff;
+}
+.btn-copy-prompt {
+  flex-shrink: 0;
+  width: 110px;
+  padding: 6px 0;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+.btn-copy-prompt:hover { opacity: 0.85; }
+
+.ai-prompt-desc-area {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  border-bottom: 1px solid var(--border);
+}
+.ai-prompt-body {
+  border-top: 1px solid var(--border);
+  max-height: 320px;
+  overflow-y: auto;
+}
+.ai-prompt-text {
+  padding: 16px;
+  margin: 0;
+  font-size: 12px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-muted);
+}
+.btn-prompt-more {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+}
+.btn-prompt-more:hover { background: var(--surface); color: var(--text); }
+
 /* 저장된 문제집 목록 */
-.saved-sets-section { width: 100%; text-align: left; margin-bottom: 20px; }
+.saved-sets-section { width: 100%; text-align: left; margin-top: 28px; margin-bottom: 20px; }
 .saved-sets-label {
   font-size: 11px;
   font-weight: 700;
@@ -118,6 +203,7 @@ body {
 .upload-zones {
   display: flex;
   gap: 0;
+  margin-top: 28px;
   align-items: stretch;
   border: 2px dashed var(--border);
   border-radius: 12px;

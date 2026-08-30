@@ -1,5 +1,113 @@
 marked.setOptions({ breaks: true });
 
+// ===== AI 파싱 프롬프트 =====
+const AI_PARSING_PROMPT = `당신은 코드 분석 문제집 PDF를 구조화된 JSON으로 변환하는 파서입니다.
+입력은 PDF에서 추출된 텍스트(OCR 기반)이며, 이 텍스트에는 PDF 레이아웃 때문에 생긴
+줄바꿈 오류, 코드 들여쓰기 소실 등의 문제가 섞여 있습니다. 아래 규칙을 반드시 지켜서
+변환하세요.
+
+## 출력 스키마
+
+{
+  "categories": [
+    { "id": "python", "name": "Python", "emoji": "🐍", "language": "python" },
+    { "id": "c", "name": "C", "emoji": "⚙️", "language": "c" },
+    { "id": "sql", "name": "SQL", "emoji": "🗄", "language": "sql" },
+    { "id": "java", "name": "Java", "emoji": "☕", "language": "java" },
+    { "id": "plain", "name": "Plain text", "emoji": "📝", "language": null }
+  ],
+  "problems": [
+    {
+      "id": <문제 순번, 1부터>,
+      "num": <문제 순번, id와 동일>,
+      "category": <"python"|"c"|"sql"|"java"|"plain" 중 코드 언어에 맞게 선택>,
+      "language": <category와 동일한 값, 코드가 없으면 null>,
+      "question": "<문제 지문 텍스트>",
+      "code": "<코드 원문, 없으면 필드 생략>",
+      "answer": "<정답>",
+      "explanation": "<해설 전체 텍스트>"
+    }
+  ]
+}
+
+## 규칙 1 — PDF 강제 줄바꿈 복원
+
+PDF는 페이지 폭에 맞춰 문장 중간에서도 강제로 줄을 바꾼다. 아래 기준으로 판단해서
+불필요한 줄바꿈은 이어붙이고, 의미상 필요한 줄바꿈만 유지한다.
+
+- 이어붙여야 하는 경우: 줄 끝이 조사/어미로 끊기거나(예: "~하는", "~이다" 앞), 문장이
+  마침표 없이 끝나고 다음 줄이 소문자/한글로 자연스럽게 이어질 때.
+- 유지해야 하는 경우:
+  - 번호 매김 목록 (①②③, ❶❷❸, 1. 2. 3. 등) 각 항목 사이
+  - 코드 블록 내부의 줄바꿈 (원본 코드 구조를 그대로 따름)
+  - 표(테이블) 형식 내용의 행 구분
+  - "결과", "답", "해설" 같은 라벨과 그 내용 사이의 의도된 개행
+- 판단이 애매하면 원문의 마침표(.)와 쉼표(,) 위치를 우선 기준으로 삼는다.
+- 같은 단어가 페이지 넘김 과정에서 두 번 겹쳐 나오거나(OCR 중복), 음절이 잘려서
+  따로 떨어진 경우(예: "한 다" → "한다") 자연스럽게 하나로 합친다.
+
+## 규칙 2 — 코드 들여쓰기 복원
+
+원본 PDF의 코드 블록은 이미지 기반이라 들여쓰기 공백이 OCR 과정에서 소실되거나
+불규칙하게 남는다. code 필드에 넣을 때는 다음을 따른다.
+
+- 들여쓰기 단위는 공백 2칸으로 통일한다(탭 금지).
+- 들여쓰기 깊이는 원본 이미지가 아니라 코드의 구조(중괄호 {}, 콜론, 들여쓰기 기반
+  블록 등 해당 언어의 문법 규칙)로 판단해서 재구성한다.
+  - C/Java: \`{\` 로 열리는 블록마다 1단계(공백 2칸) 증가, \`}\` 로 닫히면 1단계 감소.
+  - Python: \`:\` 로 끝나는 줄 다음부터 1단계 증가, 들여쓰기가 원본에서 확인되면 그
+    구조를 유지하되 공백 2칸 기준으로 정규화.
+  - SQL: 별도 들여쓰기 규칙 없으면 원본 줄바꿈만 보존.
+- 코드 안의 문자열 리터럴(따옴표 안 내용)은 절대 줄바꿈하거나 들여쓰기를 넣지 않는다.
+- 코드 내 주석, 세미콜론, 괄호 등 문법 기호는 원본 그대로 보존한다(임의 수정 금지).
+- 최종적으로 재구성한 코드를 그대로 실행했을 때 의미가 원본과 동일한지 스스로
+  검증한 뒤 출력한다.
+
+## 규칙 3 — 필드 분리 기준
+
+- question: 문제 지시문 + 지문 안에 포함된 표/보기/조건 등 문제의 일부(정답 제외).
+  표는 markdown 표 형식(\`| |\`)으로 변환해서 question 문자열 안에 포함시킨다.
+- code: 문제에 제시된 프로그램 코드만. 해설 안에 반복되는 코드(❶❷❸ 주석 달린 버전)는
+  code 필드에 넣지 않고 explanation에만 남긴다.
+- answer: "답 :" 뒤에 나오는 최종 정답만. 여러 줄이면 개행(\\n)으로 구분.
+- explanation: "[해설]" 이후 내용 전체. ❶❷❸, Ⓐ Ⓑ 같은 단계 표시 기호는 그대로
+  보존하고, 원본에 등장하는 모든 표(변수 값 변화표, 메모리 상태도, 배열/구조체 값
+  추적표 등)는 반드시 markdown 표(\`| |\` 문법, 헤더 행 + 구분선 \`|---|---|\` 포함)로
+  변환해서 explanation 문자열 안에 넣는다. 표를 문자열 안에 넣을 때는 표 앞뒤로
+  빈 줄(\\n\\n)을 둬서 렌더링 시 구분이 되도록 한다. 텍스트로 나열된 값 목록도
+  "변수/값" 형태로 반복되면 markdown 표로 변환하는 것을 우선한다(줄글 나열 지양).
+
+## 규칙 4 — 일반 검증
+
+- 숫자(정답, 배점, 문항 번호 등)는 원본과 절대 다르게 바꾸지 않는다.
+- 하나의 PDF 안에 이미지 기반 OCR 텍스트와 재정렬된 plain 텍스트가 중복으로 들어있는
+  경우, 더 깨끗하게 정리된 plain 텍스트 쪽을 우선 소스로 사용한다.
+- JSON 문자열 내부의 개행은 반드시 \\n으로 이스케이프한다.
+- 변환이 끝나면 categories/problems 스키마와 정확히 일치하는지, 필드 누락이나 오탈자가
+  없는지, explanation 내 표가 markdown 문법으로 올바르게 작성되었는지 한 번 더
+  검토한 뒤 최종 JSON만 출력한다(설명 문구 없이 JSON만).`;
+
+function copyParsingPrompt() {
+  navigator.clipboard.writeText(AI_PARSING_PROMPT).then(() => {
+    const btn = document.getElementById('btn-copy-prompt');
+    btn.textContent = '복사됨 ✓';
+    setTimeout(() => { btn.textContent = '프롬프트 복사'; }, 2000);
+  });
+}
+
+function togglePromptView() {
+  const body = document.getElementById('ai-prompt-body');
+  const btn  = document.getElementById('btn-prompt-more');
+  const isOpen = !body.classList.contains('hidden');
+  if (isOpen) {
+    body.classList.add('hidden');
+    btn.textContent = '∨ 프롬프트 보기';
+  } else {
+    body.classList.remove('hidden');
+    btn.textContent = '∧ 접기';
+  }
+}
+
 // ===== STATE =====
 let appData = { categories: [], problems: [] };
 let progress = {};
@@ -40,6 +148,8 @@ function migrateOldData() {
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('ai-prompt-text').textContent = AI_PARSING_PROMPT;
+
   initUploadScreen();
   initReviewScreen();
   initQuizScreen();

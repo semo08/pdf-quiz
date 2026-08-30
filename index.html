@@ -15,11 +15,6 @@
       <h1>PDF → Quiz</h1>
       <p class="upload-subtitle">PDF를 업로드하면 문제풀이 앱으로 변환됩니다.</p>
 
-      <div id="saved-sets-section" class="saved-sets-section hidden">
-        <div class="saved-sets-label">📂 저장된 문제집</div>
-        <div id="saved-sets-list" class="saved-sets-list"></div>
-      </div>
-
       <div class="upload-zones">
         <div class="upload-zone" id="drop-pdf">
           <div class="zone-icon">📄</div>
@@ -43,6 +38,28 @@
       <div id="parse-progress" class="parse-progress hidden">
         <div class="progress-bar-wrap"><div id="progress-bar" class="progress-bar"></div></div>
         <div id="progress-label" class="progress-label">파싱 중...</div>
+      </div>
+
+      <div class="ai-prompt-card" id="ai-prompt-card">
+        <div class="ai-prompt-card-header">
+          <div class="ai-prompt-card-title">
+            <span class="ai-prompt-badge">권장</span>
+            <span>AI 파싱 프롬프트</span>
+          </div>
+          <button class="btn-copy-prompt" id="btn-copy-prompt" onclick="copyParsingPrompt()">프롬프트 복사</button>
+        </div>
+        <div class="ai-prompt-desc-area">
+          파싱 품질이 중요하다면 AI를 추천해요.<br>AI에 문제 PDF + 이 프롬프트를 주면 표·코드·해설까지 JSON으로 변환할 수 있습니다.
+        </div>
+        <div class="ai-prompt-body hidden" id="ai-prompt-body">
+          <pre id="ai-prompt-text" class="ai-prompt-text"></pre>
+        </div>
+        <button class="btn-prompt-more" id="btn-prompt-more" onclick="togglePromptView()">∨ 프롬프트 보기</button>
+      </div>
+
+      <div id="saved-sets-section" class="saved-sets-section hidden">
+        <div class="saved-sets-label">📂 저장된 문제집</div>
+        <div id="saved-sets-list" class="saved-sets-list"></div>
       </div>
     </div>
   </div>
