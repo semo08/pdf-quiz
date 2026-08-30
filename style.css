@@ -449,7 +449,7 @@ body {
 /* Problem number tab bar (top of right panel) */
 .problem-tab-bar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 12px 24px 4px;
   background: transparent;
@@ -466,12 +466,13 @@ body {
   letter-spacing: 0.05em;
   white-space: nowrap;
   flex-shrink: 0;
+  margin-top: 8px;
 }
 
 .problem-nav-row {
   display: flex;
   gap: 4px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 
 /* Sidebar: set-group tree */
