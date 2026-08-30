@@ -368,7 +368,7 @@ const LANG_NAMES = { c: 'C', java: 'Java', python: 'Python', sql: 'SQL' };
 function initQuizScreen() {
   document.getElementById('btn-check').addEventListener('click', checkAnswer);
   document.getElementById('answer-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') checkAnswer();
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); checkAnswer(); }
   });
   document.getElementById('btn-explanation').addEventListener('click', toggleExplanation);
   document.getElementById('btn-next').addEventListener('click', goNextProblem);

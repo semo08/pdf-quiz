@@ -591,6 +591,9 @@ body {
   font-size: 14px;
   outline: none;
   transition: border-color 0.15s;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
 }
 #answer-input:focus { border-color: var(--accent); }
 #answer-input.correct { border-color: var(--success); }
