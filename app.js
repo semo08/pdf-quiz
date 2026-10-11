@@ -1,5 +1,47 @@
 marked.setOptions({ breaks: true });
 
+// 문제 지문에 자주 쓰이는 기호가 마크다운 문법으로 오인되는 것을 방지
+// - 물결표: "괄호(①~③)", "기호(㉠~㉧)" 가 취소선(~텍스트~)으로 해석되는 문제
+// - 꺾쇠: "테이블 <R>에서", "<Table R1>" 이 HTML 태그로 해석돼 사라지는 문제
+marked.use({
+  extensions: [
+    {
+      name: 'plainTilde',
+      level: 'inline',
+      start(src) { return src.indexOf('~'); },
+      tokenizer(src) {
+        const m = /^~+/.exec(src);
+        if (m) return { type: 'text', raw: m[0], text: m[0] };
+      }
+    },
+    {
+      name: 'plainAngle',
+      level: 'inline',
+      start(src) { return src.indexOf('<'); },
+      tokenizer(src) {
+        const m = /^<[^<>\n]*>/.exec(src);
+        if (m) return { type: 'text', raw: m[0], text: m[0] };
+      }
+    }
+  ]
+});
+
+// 줄 맨 앞의 <Table R1> 같은 태그 모양은 블록 HTML로 삼켜지므로 미리 이스케이프
+// (줄 중간의 꺾쇠는 위 plainAngle 확장이 처리하고, 코드 펜스 내부는 건드리지 않음)
+function escapeLeadingTags(md) {
+  let inFence = false;
+  return md.split('\n').map(line => {
+    if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return line; }
+    if (inFence) return line;
+    return line.replace(/^(\s*)<([A-Za-z][^<>\n]*)>/, '$1&lt;$2&gt;');
+  }).join('\n');
+}
+
+// 문제/해설 텍스트 렌더링 진입점
+function renderMarkdown(src) {
+  return marked.parse(escapeLeadingTags(src || ''));
+}
+
 // ===== AI 파싱 프롬프트 =====
 const AI_PARSING_PROMPT = `당신은 코드 분석 문제집 PDF를 구조화된 JSON으로 변환하는 파서입니다.
 입력은 PDF에서 추출된 텍스트(OCR 기반)이며, 이 텍스트에는 PDF 레이아웃 때문에 생긴
@@ -405,7 +447,7 @@ function toggleEditPreview(field) {
     textarea.classList.remove('hidden');
     btn.textContent = '미리보기';
   } else {
-    preview.innerHTML = marked.parse(textarea.value || '');
+    preview.innerHTML = renderMarkdown(textarea.value);
     preview.classList.remove('hidden');
     textarea.classList.add('hidden');
     btn.textContent = '편집';
@@ -603,7 +645,7 @@ function showProblem(probId) {
 
   document.getElementById('problem-badge').textContent = `${cat?.emoji || ''} ${cat?.name || p.category}`;
   document.getElementById('problem-counter').textContent = `${idx} / ${catProbs.length}`;
-  document.getElementById('problem-question').innerHTML = marked.parse(p.question || '');
+  document.getElementById('problem-question').innerHTML = renderMarkdown(p.question);
 
   const codeWrap  = document.getElementById('code-wrap');
   const codeEl    = document.getElementById('code-content');
@@ -686,7 +728,7 @@ function toggleExplanation() {
     btn.textContent = '해설 보기 ▼';
     btn.classList.remove('open');
   } else {
-    expl.innerHTML = marked.parse(p?.explanation || '');
+    expl.innerHTML = renderMarkdown(p?.explanation);
     expl.classList.remove('hidden');
     btn.textContent = '해설 닫기 ▲';
     btn.classList.add('open');
@@ -747,11 +789,11 @@ function buildPrintArea(includeAnswers) {
     <div class="print-problem">
       <div class="print-q-num">${i + 1}.</div>
       <div class="print-q-body">
-        <div class="print-question">${marked.parse(p.question || '')}</div>
+        <div class="print-question">${renderMarkdown(p.question)}</div>
         ${p.code ? `<pre class="print-code">${escHtml(p.code)}</pre>` : ''}
         ${includeAnswers ? `
           <div class="print-answer"><strong>정답:</strong> ${escHtml(p.answer || '')}</div>
-          ${p.explanation ? `<div class="print-explanation">${marked.parse(p.explanation)}</div>` : ''}
+          ${p.explanation ? `<div class="print-explanation">${renderMarkdown(p.explanation)}</div>` : ''}
         ` : ''}
       </div>
     </div>
