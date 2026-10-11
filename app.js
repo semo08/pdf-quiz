@@ -43,6 +43,17 @@ function escapeLeadingTags(md) {
   }).join('\n');
 }
 
+// 렌더링 결과를 넣으면서 표를 가로 스크롤 컨테이너로 감쌈 (좁은 화면에서 잘림 방지)
+function setMarkdownHtml(el, src) {
+  el.innerHTML = renderMarkdown(src);
+  el.querySelectorAll('table').forEach(table => {
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    table.parentNode.insertBefore(wrap, table);
+    wrap.appendChild(table);
+  });
+}
+
 // 문제/해설 텍스트 렌더링 진입점
 // 문제집 JSON은 외부(AI 변환 결과·공유받은 파일)에서 올 수 있으므로 반드시 sanitize 후 삽입
 function renderMarkdown(src) {
@@ -483,7 +494,7 @@ function toggleEditPreview(field) {
     textarea.classList.remove('hidden');
     btn.textContent = '미리보기';
   } else {
-    preview.innerHTML = renderMarkdown(textarea.value);
+    setMarkdownHtml(preview, textarea.value);
     preview.classList.remove('hidden');
     textarea.classList.add('hidden');
     btn.textContent = '편집';
@@ -597,15 +608,64 @@ function initQuizScreen() {
   // 사이드바 카테고리 / 문제 번호 (동적 렌더링 → 이벤트 위임)
   document.getElementById('category-nav').addEventListener('click', e => {
     const item = e.target.closest('[data-cat-id]');
-    if (item) selectCategoryInSet(item.dataset.setId, item.dataset.catId);
+    if (item) {
+      selectCategoryInSet(item.dataset.setId, item.dataset.catId);
+      closeSidebar(); // 모바일 드로어에서 선택 시 닫기
+    }
   });
   document.getElementById('problem-nav').addEventListener('click', e => {
     const btn = e.target.closest('[data-prob-id]');
     if (btn) {
       const p = findProblemByRawId(btn.dataset.probId);
-      if (p) showProblem(p.id);
+      if (p) { showProblem(p.id); collapseProblemNav(); }
     }
   });
+
+  // 모바일: 햄버거 드로어 + 문제 번호 접기/펼치기
+  document.getElementById('btn-menu').addEventListener('click', openSidebar);
+  document.getElementById('sidebar-backdrop').addEventListener('click', closeSidebar);
+  document.getElementById('btn-toggle-nav').addEventListener('click', toggleProblemNav);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSidebar(); });
+}
+
+// ===== 모바일 네비게이션 =====
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebar-backdrop').classList.add('open');
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-backdrop').classList.remove('open');
+}
+
+function toggleProblemNav() {
+  const nav = document.getElementById('problem-nav');
+  const btn = document.getElementById('btn-toggle-nav');
+  const expanded = nav.classList.toggle('expanded');
+  btn.setAttribute('aria-expanded', String(expanded));
+  updateProblemNavToggle();
+  if (expanded) {
+    const active = nav.querySelector('.prob-btn.active');
+    if (active) active.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function collapseProblemNav() {
+  const nav = document.getElementById('problem-nav');
+  nav.classList.remove('expanded');
+  document.getElementById('btn-toggle-nav').setAttribute('aria-expanded', 'false');
+  updateProblemNavToggle();
+}
+
+// 접힘 상태에서도 현재 위치를 알 수 있도록 "21 / 129 ▾" 형태로 표시
+function updateProblemNavToggle() {
+  const nav = document.getElementById('problem-nav');
+  const btn = document.getElementById('btn-toggle-nav');
+  const probs = appData.problems.filter(p => p.category === currentCatId);
+  const idx = probs.findIndex(p => p.id === currentProbId);
+  const arrow = nav.classList.contains('expanded') ? '▴' : '▾';
+  btn.textContent = `${idx >= 0 ? idx + 1 : 1} / ${probs.length} ${arrow}`;
 }
 
 function startQuiz() {
@@ -678,6 +738,7 @@ function renderProblemNav(catId) {
     `<div class="prob-btn ${p.id === currentProbId ? 'active' : ''} ${progress[p.id] ? 'correct' : ''}"
           data-prob-id="${escHtml(String(p.id))}">${i + 1}</div>`
   ).join('');
+  updateProblemNavToggle();
 }
 
 function showProblem(probId) {
@@ -694,7 +755,7 @@ function showProblem(probId) {
 
   document.getElementById('problem-badge').textContent = `${cat?.emoji || ''} ${cat?.name || p.category}`;
   document.getElementById('problem-counter').textContent = `${idx} / ${catProbs.length}`;
-  document.getElementById('problem-question').innerHTML = renderMarkdown(p.question);
+  setMarkdownHtml(document.getElementById('problem-question'), p.question);
 
   const codeWrap  = document.getElementById('code-wrap');
   const codeEl    = document.getElementById('code-content');
@@ -805,7 +866,7 @@ function toggleExplanation() {
     btn.textContent = '해설 보기 ▼';
     btn.classList.remove('open');
   } else {
-    expl.innerHTML = renderMarkdown(p?.explanation);
+    setMarkdownHtml(expl, p?.explanation);
     expl.classList.remove('hidden');
     btn.textContent = '해설 닫기 ▲';
     btn.classList.add('open');
