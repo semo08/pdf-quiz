@@ -440,6 +440,21 @@ body {
   margin-top: 4px;
 }
 
+/* PDF 출력 모달 */
+.print-modal-desc { font-size: 13px; color: var(--text-muted); }
+.modal-box .print-checkbox-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+.modal-box .print-checkbox-label input { width: auto; }
+
 /* ===== SCREEN 3: QUIZ ===== */
 #screen-quiz { flex-direction: row; overflow: hidden; }
 
@@ -820,6 +835,61 @@ body {
 
 /* ===== UTILS ===== */
 .hidden { display: none !important; }
+
+/* ===== PDF 출력 (인쇄 영역) ===== */
+.print-area { display: none; }
+
+@media print {
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+  .print-header { margin-bottom: 16px; }
+  .print-header h1 { font-size: 18px; margin-bottom: 4px; }
+  .print-meta { font-size: 12px; color: #555; }
+  .print-problem {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    display: flex;
+    gap: 10px;
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #ddd;
+  }
+  .print-q-num { font-weight: 700; flex-shrink: 0; }
+  .print-q-body { flex: 1; }
+  .print-question { font-size: 13px; line-height: 1.6; margin-bottom: 8px; color: #000; }
+  .print-question p { margin: 0 0 6px; }
+  .print-question table,
+  .print-explanation table {
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 12px;
+  }
+  .print-question th, .print-question td,
+  .print-explanation th, .print-explanation td {
+    border: 1px solid #999;
+    padding: 4px 8px;
+  }
+  .print-code {
+    background: #f5f5f5;
+    border: 1px solid #ccc;
+    padding: 8px 10px;
+    font-family: 'Consolas', 'D2Coding', monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    color: #000;
+    margin-bottom: 8px;
+  }
+  .print-answer { font-size: 13px; margin-bottom: 6px; color: #000; }
+  .print-explanation { font-size: 12px; color: #333; line-height: 1.5; }
+  @page { margin: 15mm; }
+}
 
 /* ===== MOBILE ===== */
 @media (max-width: 640px) {

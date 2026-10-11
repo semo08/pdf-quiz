@@ -513,6 +513,8 @@ function initQuizScreen() {
     showScreen('screen-upload');
     renderSavedSets();
   });
+  document.getElementById('btn-print-cancel').addEventListener('click', closePrintModal);
+  document.getElementById('btn-print-go').addEventListener('click', runPrint);
 }
 
 function startQuiz() {
@@ -710,6 +712,58 @@ function downloadCurrentSetJSON() {
   a.download = name + '.json';
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ===== PDF 출력 =====
+function openPrintModal() {
+  if (!currentCatId) return;
+  const cat = appData.categories.find(c => c.id === currentCatId);
+  const probs = appData.problems.filter(p => p.category === currentCatId);
+  document.getElementById('print-modal-desc').textContent =
+    `${cat?.emoji || ''} ${cat?.name || currentCatId} · ${probs.length}문제를 PDF로 출력합니다.`;
+  document.getElementById('print-include-answers').checked = false;
+  document.getElementById('print-modal').classList.remove('hidden');
+}
+
+function closePrintModal() {
+  document.getElementById('print-modal').classList.add('hidden');
+}
+
+function runPrint() {
+  const includeAnswers = document.getElementById('print-include-answers').checked;
+  buildPrintArea(includeAnswers);
+  closePrintModal();
+  setTimeout(() => window.print(), 50);
+}
+
+function buildPrintArea(includeAnswers) {
+  const cat = appData.categories.find(c => c.id === currentCatId);
+  const probs = appData.problems.filter(p => p.category === currentCatId);
+  const setMeta = getSetsIndex().find(s => s.id === currentSetId);
+  const setName = setMeta?.name || '문제집';
+  const date = new Date().toLocaleDateString('ko-KR');
+
+  const problemsHtml = probs.map((p, i) => `
+    <div class="print-problem">
+      <div class="print-q-num">${i + 1}.</div>
+      <div class="print-q-body">
+        <div class="print-question">${marked.parse(p.question || '')}</div>
+        ${p.code ? `<pre class="print-code">${escHtml(p.code)}</pre>` : ''}
+        ${includeAnswers ? `
+          <div class="print-answer"><strong>정답:</strong> ${escHtml(p.answer || '')}</div>
+          ${p.explanation ? `<div class="print-explanation">${marked.parse(p.explanation)}</div>` : ''}
+        ` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('print-area').innerHTML = `
+    <div class="print-header">
+      <h1>${escHtml(setName)} — ${cat?.emoji || ''} ${escHtml(cat?.name || '')}</h1>
+      <div class="print-meta">총 ${probs.length}문제 · ${date}</div>
+    </div>
+    ${problemsHtml}
+  `;
 }
 
 function copyCode() {

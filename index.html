@@ -136,6 +136,22 @@
     </div>
   </div>
 
+  <!-- PDF 출력 모달 -->
+  <div id="print-modal" class="modal hidden">
+    <div class="modal-box">
+      <h3>PDF 출력</h3>
+      <p id="print-modal-desc" class="print-modal-desc"></p>
+      <label class="print-checkbox-label">
+        <input type="checkbox" id="print-include-answers" />
+        <span>정답 · 해설 포함</span>
+      </label>
+      <div class="modal-actions">
+        <button id="btn-print-cancel" class="btn-secondary">취소</button>
+        <button id="btn-print-go" class="btn-primary">출력하기</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== SCREEN 3: QUIZ ===== -->
   <div id="screen-quiz" class="screen">
     <aside id="sidebar">
@@ -145,6 +161,7 @@
       </div>
       <div class="sidebar-footer">
         <button id="btn-save-json" class="btn-sidebar-action" onclick="downloadCurrentSetJSON()">💾 JSON 저장</button>
+        <button id="btn-print-pdf" class="btn-sidebar-action" onclick="openPrintModal()">🖨 PDF 출력</button>
         <button id="btn-back-upload" class="btn-sidebar-action">⬆ 문제집 바꾸기</button>
       </div>
     </aside>
@@ -187,6 +204,8 @@
       </main>
     </div>
   </div>
+
+  <div id="print-area" class="print-area"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
