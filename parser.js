@@ -19,12 +19,16 @@ function detectCategory(filename) {
 
 // pdf.js로 PDF 텍스트 추출 (줄 단위로 복원)
 async function extractLinesFromPDF(file, onProgress) {
-  const pdfjsLib = window['pdfjs-dist/build/pdf'];
-  pdfjsLib.GlobalWorkerOptions.workerSrc =
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  // index.html의 모듈 스크립트가 전역에 노출 (pdf.js 4.x는 ESM 전용)
+  const pdfjsLib = window.pdfjsLib;
+  if (!pdfjsLib) throw new Error('PDF 엔진을 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.');
 
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  // isEvalSupported: 조작된 PDF가 eval 경로로 코드를 실행하는 것을 차단
+  const pdf = await pdfjsLib.getDocument({
+    data: arrayBuffer,
+    isEvalSupported: false,
+  }).promise;
   const allLines = [];
 
   for (let p = 1; p <= pdf.numPages; p++) {

@@ -20,7 +20,8 @@ marked.use({
       start(src) { return src.indexOf('<'); },
       tokenizer(src) {
         const m = /^<[^<>\n]*>/.exec(src);
-        if (m) return { type: 'text', raw: m[0], text: m[0] };
+        // marked 버전에 따라 text 토큰을 렌더러가 이스케이프하지 않을 수 있으므로 직접 처리
+        if (m) return { type: 'text', raw: m[0], text: escHtml(m[0]) };
       }
     }
   ]
@@ -29,17 +30,31 @@ marked.use({
 // 줄 맨 앞의 <Table R1> 같은 태그 모양은 블록 HTML로 삼켜지므로 미리 이스케이프
 // (줄 중간의 꺾쇠는 위 plainAngle 확장이 처리하고, 코드 펜스 내부는 건드리지 않음)
 function escapeLeadingTags(md) {
-  let inFence = false;
+  let fence = null; // 펜스를 연 구분자(``` 또는 ~~~)를 기억해 같은 구분자로만 닫히게 함
   return md.split('\n').map(line => {
-    if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return line; }
-    if (inFence) return line;
+    const m = /^\s*(```|~~~)/.exec(line);
+    if (m) {
+      if (fence === null) fence = m[1];
+      else if (fence === m[1]) fence = null;
+      return line;
+    }
+    if (fence) return line;
     return line.replace(/^(\s*)<([A-Za-z][^<>\n]*)>/, '$1&lt;$2&gt;');
   }).join('\n');
 }
 
 // 문제/해설 텍스트 렌더링 진입점
+// 문제집 JSON은 외부(AI 변환 결과·공유받은 파일)에서 올 수 있으므로 반드시 sanitize 후 삽입
 function renderMarkdown(src) {
-  return marked.parse(escapeLeadingTags(src || ''));
+  const html = marked.parse(escapeLeadingTags(src || ''));
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'hr', 'strong', 'em', 'del', 'code', 'pre', 'blockquote',
+      'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span'
+    ],
+    ALLOWED_ATTR: ['class'],
+  });
 }
 
 // ===== AI 파싱 프롬프트 =====
@@ -216,6 +231,11 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ===== SCREEN HELPERS =====
+// data-* 속성값은 항상 문자열이므로 원본 id 타입(숫자/문자열)으로 되돌려 조회
+function findProblemByRawId(rawId) {
+  return appData.problems.find(p => String(p.id) === String(rawId));
+}
+
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -236,13 +256,13 @@ function renderSavedSets() {
     const total = s.problemCount || 0;
     const pct = total ? Math.round(done / total * 100) : 0;
     const date = new Date(s.createdAt).toLocaleDateString('ko-KR');
-    return `<div class="saved-set-item" onclick="loadSet('${s.id}')">
+    return `<div class="saved-set-item" data-set-id="${escHtml(s.id)}">
       <div class="saved-set-info">
         <div class="saved-set-name">${escHtml(s.name)}</div>
-        <div class="saved-set-meta">${total}문제 · ${date}</div>
+        <div class="saved-set-meta">${escHtml(String(total))}문제 · ${escHtml(date)}</div>
       </div>
       <span class="saved-set-pct">${pct}%</span>
-      <button class="btn-del-set" onclick="deleteSetEntry(event,'${s.id}')">×</button>
+      <button class="btn-del-set" data-del-set-id="${escHtml(s.id)}">×</button>
     </div>`;
   }).join('');
 }
@@ -292,6 +312,14 @@ function initUploadScreen() {
   });
 
   btnParse.addEventListener('click', e => { e.stopPropagation(); startParsing(); });
+
+  // 저장된 문제집 목록 (동적 렌더링 → 이벤트 위임)
+  document.getElementById('saved-sets-list').addEventListener('click', e => {
+    const delBtn = e.target.closest('[data-del-set-id]');
+    if (delBtn) { deleteSetEntry(e, delBtn.dataset.delSetId); return; }
+    const item = e.target.closest('[data-set-id]');
+    if (item) loadSet(item.dataset.setId);
+  });
 }
 
 let selectedPDFFiles = [];
@@ -381,6 +409,14 @@ function initReviewScreen() {
   document.getElementById('btn-modal-save').addEventListener('click', saveEdit);
   document.getElementById('btn-modal-cancel').addEventListener('click', closeModal);
   document.getElementById('btn-modal-delete').addEventListener('click', deleteProblem);
+
+  document.getElementById('review-tbody').addEventListener('click', e => {
+    const btn = e.target.closest('[data-prob-id]');
+    if (btn) {
+      const p = findProblemByRawId(btn.dataset.probId);
+      if (p) openEditModal(p.id);
+    }
+  });
 }
 
 function showReviewScreen() {
@@ -414,7 +450,7 @@ function renderReviewTable() {
       <td class="td-code">${p.code ? '있음' : '—'}</td>
       <td>${escHtml(p.answer || '—')}</td>
       <td class="${p.explanation ? 'badge-yes' : 'badge-no'}">${p.explanation ? '있음' : '—'}</td>
-      <td><button class="btn-edit-row" onclick="openEditModal(${p.id})">편집</button></td>
+      <td><button class="btn-edit-row" data-prob-id="${escHtml(String(p.id))}">편집</button></td>
     </tr>`;
   }).join('');
 }
@@ -557,6 +593,19 @@ function initQuizScreen() {
   });
   document.getElementById('btn-print-cancel').addEventListener('click', closePrintModal);
   document.getElementById('btn-print-go').addEventListener('click', runPrint);
+
+  // 사이드바 카테고리 / 문제 번호 (동적 렌더링 → 이벤트 위임)
+  document.getElementById('category-nav').addEventListener('click', e => {
+    const item = e.target.closest('[data-cat-id]');
+    if (item) selectCategoryInSet(item.dataset.setId, item.dataset.catId);
+  });
+  document.getElementById('problem-nav').addEventListener('click', e => {
+    const btn = e.target.closest('[data-prob-id]');
+    if (btn) {
+      const p = findProblemByRawId(btn.dataset.probId);
+      if (p) showProblem(p.id);
+    }
+  });
 }
 
 function startQuiz() {
@@ -587,8 +636,8 @@ function renderCategoryNav() {
       const done  = probs.filter(p => setProg[p.id]).length;
       const isActiveCat = isActiveSet && c.id === currentCatId;
       return `<div class="sidebar-cat-item ${isActiveCat ? 'active' : ''}"
-                   onclick="selectCategoryInSet('${setMeta.id}','${c.id}')">
-        <span>${c.emoji} ${c.name}</span>
+                   data-set-id="${escHtml(setMeta.id)}" data-cat-id="${escHtml(c.id)}">
+        <span>${escHtml(c.emoji)} ${escHtml(c.name)}</span>
         <span class="cat-progress">${done}/${probs.length}</span>
       </div>`;
     }).join('');
@@ -627,7 +676,7 @@ function renderProblemNav(catId) {
   document.getElementById('problem-nav-label').textContent = cat?.name || '';
   document.getElementById('problem-nav').innerHTML = probs.map((p, i) =>
     `<div class="prob-btn ${p.id === currentProbId ? 'active' : ''} ${progress[p.id] ? 'correct' : ''}"
-          onclick="showProblem(${p.id})">${i + 1}</div>`
+          data-prob-id="${escHtml(String(p.id))}">${i + 1}</div>`
   ).join('');
 }
 
