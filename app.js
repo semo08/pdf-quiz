@@ -728,8 +728,36 @@ function showProblem(probId) {
   document.getElementById('btn-next').classList.add('hidden');
 }
 
+// ===== 정답 비교 =====
+// 번호 기호(①②③, ❶❷❸)는 보통 여러 개의 답을 구분하는 라벨이지만,
+// "기호로 쓰시오" 유형에서는 기호 자체가 정답이므로 분할 결과가 온전할 때만 라벨로 간주한다.
+const ANSWER_MARKER = /[①-⑳❶-❿]/g;
+
+// 괄호·공백·쉼표·대소문자 차이 무시
 function normalizeAnswer(str) {
-  return (str || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[()（）\s]/g, '');
+  return (str || '').toLowerCase().replace(/[()（）\s,，]/g, '').trim();
+}
+
+// 답을 항목 단위로 분리 (번호 라벨 기준 → 없으면 줄바꿈/쉼표 기준)
+function answerItems(str) {
+  const s = (str || '').trim();
+  const marks = s.match(ANSWER_MARKER);
+  if (marks && marks.length >= 2) {
+    const parts = s.split(ANSWER_MARKER).slice(1).map(normalizeAnswer);
+    // 라벨 사이가 모두 채워져 있을 때만 라벨로 인정 (예: "① ③" 처럼 기호가 답인 경우 제외)
+    if (parts.length && parts.every(Boolean)) return parts;
+  }
+  return s.split(/\r?\n|[,，]/).map(normalizeAnswer).filter(Boolean);
+}
+
+function isAnswerCorrect(userVal, correctVal) {
+  const a = answerItems(userVal);
+  const b = answerItems(correctVal);
+  if (!a.length || !b.length) return false;
+  // 항목별 비교 (번호 라벨 유무·줄바꿈 차이 흡수, 순서는 유지)
+  if (a.length === b.length && a.every((v, i) => v === b[i])) return true;
+  // 구분자를 다르게 쓴 경우까지 흡수 (한 줄로 몰아쓰기 등)
+  return a.join('') === b.join('');
 }
 
 function checkAnswer() {
@@ -740,7 +768,7 @@ function checkAnswer() {
   const userVal = input.value;
   if (!userVal.trim()) return;
 
-  const correct = normalizeAnswer(userVal) === normalizeAnswer(p.answer);
+  const correct = isAnswerCorrect(userVal, p.answer);
   const result   = document.getElementById('feedback-result');
   const feedback = document.getElementById('feedback');
   const btnExpl  = document.getElementById('btn-explanation');
