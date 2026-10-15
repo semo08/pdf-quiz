@@ -189,6 +189,42 @@ const LS_SETS_INDEX = 'jegi-sets-index';
 const LS_ACTIVE_SET = 'jegi-active-set';
 const setDataKey = id => `jegi-set-${id}`;
 const setProgKey = id => `jegi-prog-${id}`;
+const setWrongKey = id => `jegi-wrong-${id}`;
+
+// ===== 오답 노트 =====
+// 문제집별로 틀린 문제 id를 저장하고, 다시 맞히면 즉시 제거한다.
+const WRONG_VIEW_ID = '__wrong__';
+let wrongIds = {};          // 현재 문제집의 오답 { [problemId]: true }
+let wrongViewList = [];     // 오답 노트를 열었을 때의 목록 스냅샷 (푸는 중 목록이 흔들리지 않도록)
+
+function readWrong(setId) {
+  try { return JSON.parse(localStorage.getItem(setWrongKey(setId))) || {}; }
+  catch { return {}; }
+}
+function saveWrong() {
+  if (currentSetId) localStorage.setItem(setWrongKey(currentSetId), JSON.stringify(wrongIds));
+}
+function wrongCount(setId, setData) {
+  const ids = setId === currentSetId ? wrongIds : readWrong(setId);
+  // 삭제된 문제는 집계에서 제외
+  return setData.problems.filter(p => ids[p.id]).length;
+}
+
+// 지금 화면에 보여줄 문제 목록 (카테고리 또는 오답 노트)
+function currentViewProblems() {
+  if (currentCatId === WRONG_VIEW_ID) {
+    return wrongViewList
+      .map(id => appData.problems.find(p => String(p.id) === String(id)))
+      .filter(Boolean);
+  }
+  return appData.problems.filter(p => p.category === currentCatId);
+}
+
+function currentViewLabel() {
+  if (currentCatId === WRONG_VIEW_ID) return '오답 노트';
+  const cat = appData.categories.find(c => c.id === currentCatId);
+  return cat?.name || currentCatId || '';
+}
 
 function getSetsIndex() {
   try { return JSON.parse(localStorage.getItem(LS_SETS_INDEX)) || []; }
@@ -233,6 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
         appData = JSON.parse(raw);
         currentSetId = activeId;
         progress = JSON.parse(localStorage.getItem(setProgKey(activeId)) || '{}');
+        wrongIds = readWrong(activeId);
         startQuiz();
         return;
       } catch {}
@@ -284,6 +321,7 @@ function loadSet(setId) {
   appData = JSON.parse(raw);
   currentSetId = setId;
   progress = JSON.parse(localStorage.getItem(setProgKey(setId)) || '{}');
+  wrongIds = readWrong(setId);
   startQuiz();
 }
 
@@ -293,6 +331,7 @@ function deleteSetEntry(e, setId) {
   saveSetsIndex(getSetsIndex().filter(s => s.id !== setId));
   localStorage.removeItem(setDataKey(setId));
   localStorage.removeItem(setProgKey(setId));
+  localStorage.removeItem(setWrongKey(setId));
   if (localStorage.getItem(LS_ACTIVE_SET) === setId) localStorage.removeItem(LS_ACTIVE_SET);
   renderSavedSets();
 }
@@ -383,6 +422,7 @@ async function handleJSONFile(file) {
     appData = data;
     currentSetId = setId;
     progress = {};
+    wrongIds = {};
     startQuiz();
   } catch {
     alert('올바른 문제집 JSON 파일이 아닙니다.');
@@ -553,9 +593,10 @@ function deleteProblem() {
   if (activeScreen?.id === 'screen-quiz') {
     currentProbId = null;
     renderCategoryNav();
-    renderProblemNav(currentCatId);
-    const probs = appData.problems.filter(p => p.category === currentCatId);
+    renderProblemNav();
+    const probs = currentViewProblems();
     if (probs.length) showProblem(probs[0].id);
+    else showEmptyView();
   } else {
     renderReviewTable();
   }
@@ -583,6 +624,7 @@ function saveAndStart() {
 
   currentSetId = setId;
   progress = {};
+  wrongIds = {};
   startQuiz();
 }
 
@@ -625,10 +667,32 @@ function initQuizScreen() {
   document.getElementById('btn-menu').addEventListener('click', openSidebar);
   document.getElementById('sidebar-backdrop').addEventListener('click', closeSidebar);
   document.getElementById('btn-toggle-nav').addEventListener('click', toggleProblemNav);
+  document.getElementById('btn-prev-problem').addEventListener('click', () => stepProblem(-1));
+  document.getElementById('btn-next-problem').addEventListener('click', () => stepProblem(1));
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSidebar(); });
 }
 
 // ===== 모바일 네비게이션 =====
+// CSS의 모바일 분기(max-width: 640px)와 기준을 맞춤
+function isMobileView() {
+  return window.matchMedia('(max-width: 640px)').matches;
+}
+
+// 현재 카테고리 안에서 이전/다음 문제로 이동
+function stepProblem(delta) {
+  const probs = currentViewProblems();
+  const idx = probs.findIndex(p => p.id === currentProbId);
+  const next = probs[idx + delta];
+  if (next) { showProblem(next.id); collapseProblemNav(); }
+}
+
+function updateStepButtons() {
+  const probs = currentViewProblems();
+  const idx = probs.findIndex(p => p.id === currentProbId);
+  document.getElementById('btn-prev-problem').disabled = idx <= 0;
+  document.getElementById('btn-next-problem').disabled = idx < 0 || idx >= probs.length - 1;
+}
+
 function openSidebar() {
   document.getElementById('sidebar').classList.add('open');
   document.getElementById('sidebar-backdrop').classList.add('open');
@@ -662,10 +726,11 @@ function collapseProblemNav() {
 function updateProblemNavToggle() {
   const nav = document.getElementById('problem-nav');
   const btn = document.getElementById('btn-toggle-nav');
-  const probs = appData.problems.filter(p => p.category === currentCatId);
+  const probs = currentViewProblems();
   const idx = probs.findIndex(p => p.id === currentProbId);
   const arrow = nav.classList.contains('expanded') ? '▴' : '▾';
   btn.textContent = `${idx >= 0 ? idx + 1 : 1} / ${probs.length} ${arrow}`;
+  updateStepButtons();
 }
 
 function startQuiz() {
@@ -702,9 +767,20 @@ function renderCategoryNav() {
       </div>`;
     }).join('');
 
+    // 오답 노트 (틀린 문제가 있을 때만 노출)
+    const wrongN = wrongCount(setMeta.id, setData);
+    const wrongRow = wrongN > 0
+      ? `<div class="sidebar-cat-item wrong-note ${isActiveSet && currentCatId === WRONG_VIEW_ID ? 'active' : ''}"
+              data-set-id="${escHtml(setMeta.id)}" data-cat-id="${WRONG_VIEW_ID}">
+          <span>❌ 오답 노트</span>
+          <span class="cat-progress">${wrongN}</span>
+        </div>`
+      : '';
+
     return `<div class="sidebar-set-group">
       <div class="sidebar-set-header ${isActiveSet ? 'active' : ''}">${escHtml(setMeta.name)}</div>
       ${catRows}
+      ${wrongRow}
     </div>`;
   }).join('');
 }
@@ -716,6 +792,7 @@ function selectCategoryInSet(setId, catId) {
     appData = JSON.parse(raw);
     currentSetId = setId;
     progress = JSON.parse(localStorage.getItem(setProgKey(setId)) || '{}');
+    wrongIds = readWrong(setId);
     localStorage.setItem(LS_ACTIVE_SET, setId);
   }
   selectCategory(catId);
@@ -723,17 +800,36 @@ function selectCategoryInSet(setId, catId) {
 
 function selectCategory(catId) {
   currentCatId = catId;
+  // 오답 노트는 열 때의 목록을 고정 (푸는 도중 항목이 사라져 순서가 흔들리지 않도록)
+  if (catId === WRONG_VIEW_ID) {
+    wrongViewList = appData.problems.filter(p => wrongIds[p.id]).map(p => p.id);
+  }
   renderCategoryNav();
-  renderProblemNav(catId);
-  const probs = appData.problems.filter(p => p.category === catId);
+  renderProblemNav();
+  const probs = currentViewProblems();
   const first = probs.find(p => !progress[p.id]) || probs[0];
   if (first) showProblem(first.id);
+  else showEmptyView();
 }
 
-function renderProblemNav(catId) {
-  const probs = appData.problems.filter(p => p.category === catId);
-  const cat   = appData.categories.find(c => c.id === catId);
-  document.getElementById('problem-nav-label').textContent = cat?.name || '';
+// 보여줄 문제가 없을 때 (오답 노트를 모두 해결한 경우 등)
+function showEmptyView() {
+  currentProbId = null;
+  document.getElementById('problem-badge').textContent = currentViewLabel();
+  document.getElementById('problem-counter').textContent = '0 / 0';
+  document.getElementById('problem-question').innerHTML =
+    currentCatId === WRONG_VIEW_ID
+      ? '<p>🎉 오답 노트가 비었습니다. 틀린 문제를 모두 다시 맞혔어요!</p>'
+      : '<p>표시할 문제가 없습니다.</p>';
+  document.getElementById('code-wrap').className = 'code-wrap hidden';
+  document.getElementById('answer-area').classList.add('hidden');
+  document.getElementById('feedback').classList.add('hidden');
+  document.getElementById('btn-edit-problem').classList.add('hidden');
+}
+
+function renderProblemNav() {
+  const probs = currentViewProblems();
+  document.getElementById('problem-nav-label').textContent = currentViewLabel();
   document.getElementById('problem-nav').innerHTML = probs.map((p, i) =>
     `<div class="prob-btn ${p.id === currentProbId ? 'active' : ''} ${progress[p.id] ? 'correct' : ''}"
           data-prob-id="${escHtml(String(p.id))}">${i + 1}</div>`
@@ -746,10 +842,17 @@ function showProblem(probId) {
   if (!p) return;
   currentProbId = probId;
 
-  renderCategoryNav();
-  renderProblemNav(p.category);
+  // 오답 노트를 보고 있으면 뷰를 유지하고, 아니면 문제가 속한 카테고리로 맞춘다
+  if (currentCatId !== WRONG_VIEW_ID) currentCatId = p.category;
 
-  const catProbs = appData.problems.filter(pr => pr.category === p.category);
+  // 빈 화면 상태에서 복귀
+  document.getElementById('answer-area').classList.remove('hidden');
+  document.getElementById('btn-edit-problem').classList.remove('hidden');
+
+  renderCategoryNav();
+  renderProblemNav();
+
+  const catProbs = currentViewProblems();
   const idx = catProbs.findIndex(pr => pr.id === p.id) + 1;
   const cat = appData.categories.find(c => c.id === p.category);
 
@@ -777,7 +880,8 @@ function showProblem(probId) {
   input.value = '';
   input.disabled = false;
   input.className = '';
-  input.focus();
+  // 모바일에서는 자동 포커스하지 않음 (키보드가 올라오며 화면이 확대·스크롤됨)
+  if (!isMobileView()) input.focus();
 
   document.getElementById('btn-check').disabled = false;
   document.getElementById('feedback').classList.add('hidden');
@@ -787,6 +891,7 @@ function showProblem(probId) {
   btnExplEl.textContent = '해설 보기 ▼';
   document.getElementById('explanation-text').classList.add('hidden');
   document.getElementById('btn-next').classList.add('hidden');
+  document.getElementById('quiz-main').scrollTop = 0; // 새 문제는 항상 맨 위부터
 }
 
 // ===== 정답 비교 =====
@@ -851,9 +956,20 @@ function checkAnswer() {
   if (correct) {
     progress[p.id] = true;
     if (currentSetId) localStorage.setItem(setProgKey(currentSetId), JSON.stringify(progress));
-    renderCategoryNav();
-    renderProblemNav(p.category);
+    // 오답 노트에 있던 문제를 맞히면 즉시 제거
+    if (wrongIds[p.id]) {
+      delete wrongIds[p.id];
+      saveWrong();
+      if (currentCatId === WRONG_VIEW_ID) {
+        result.textContent = '✅ 정답! — 오답 노트에서 제외됐어요';
+      }
+    }
+  } else {
+    wrongIds[p.id] = true;
+    saveWrong();
   }
+  renderCategoryNav();
+  renderProblemNav();
 }
 
 function toggleExplanation() {
@@ -874,7 +990,7 @@ function toggleExplanation() {
 }
 
 function goNextProblem() {
-  const catProbs = appData.problems.filter(p => p.category === currentCatId);
+  const catProbs = currentViewProblems();
   const idx = catProbs.findIndex(p => p.id === currentProbId);
   const next = catProbs[idx + 1];
   if (next) showProblem(next.id);
@@ -897,10 +1013,9 @@ function downloadCurrentSetJSON() {
 // ===== PDF 출력 =====
 function openPrintModal() {
   if (!currentCatId) return;
-  const cat = appData.categories.find(c => c.id === currentCatId);
-  const probs = appData.problems.filter(p => p.category === currentCatId);
+  const probs = currentViewProblems();
   document.getElementById('print-modal-desc').textContent =
-    `${cat?.emoji || ''} ${cat?.name || currentCatId} · ${probs.length}문제를 PDF로 출력합니다.`;
+    `${currentViewLabel()} · ${probs.length}문제를 PDF로 출력합니다.`;
   document.getElementById('print-include-answers').checked = false;
   document.getElementById('print-modal').classList.remove('hidden');
 }
@@ -917,8 +1032,7 @@ function runPrint() {
 }
 
 function buildPrintArea(includeAnswers) {
-  const cat = appData.categories.find(c => c.id === currentCatId);
-  const probs = appData.problems.filter(p => p.category === currentCatId);
+  const probs = currentViewProblems();
   const setMeta = getSetsIndex().find(s => s.id === currentSetId);
   const setName = setMeta?.name || '문제집';
   const date = new Date().toLocaleDateString('ko-KR');
@@ -939,7 +1053,7 @@ function buildPrintArea(includeAnswers) {
 
   document.getElementById('print-area').innerHTML = `
     <div class="print-header">
-      <h1>${escHtml(setName)} — ${cat?.emoji || ''} ${escHtml(cat?.name || '')}</h1>
+      <h1>${escHtml(setName)} — ${escHtml(currentViewLabel())}</h1>
       <div class="print-meta">총 ${probs.length}문제 · ${date}</div>
     </div>
     ${problemsHtml}

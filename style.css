@@ -529,6 +529,17 @@ body {
 .sidebar-cat-item:hover { background: var(--sidebar-hover-bg); color: var(--sidebar-text); }
 .sidebar-cat-item.active { background: var(--sidebar-active-bg); color: var(--sidebar-active-text); }
 
+/* 오답 노트 */
+.sidebar-cat-item.wrong-note .cat-progress {
+  background: rgba(220,38,38,0.22);
+  color: #fca5a5;
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-weight: 700;
+  opacity: 1;
+}
+.sidebar-cat-item.wrong-note.active { color: #fca5a5; }
+
 /* Sidebar */
 #sidebar {
   width: var(--sidebar-width);
@@ -896,7 +907,7 @@ body {
 .table-wrap table { margin: 12px 0; }
 
 /* 모바일 전용 컨트롤 (데스크톱에서는 숨김) */
-.btn-menu, .btn-toggle-nav, .sidebar-backdrop { display: none; }
+.btn-menu, .btn-toggle-nav, .sidebar-backdrop, .problem-step-group { display: none; }
 
 /* ===== MOBILE ===== */
 @media (max-width: 640px) {
@@ -951,18 +962,50 @@ body {
     font-size: 16px;
     cursor: pointer;
   }
+  /* 이전 / 현재위치 / 다음 묶음 */
+  .problem-step-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
   .btn-toggle-nav {
     display: inline-block;
-    margin-left: auto;
-    padding: 7px 12px;
+    min-width: 76px;
+    padding: 8px 10px;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--bg);
     color: var(--text-muted);
     font-size: 12px;
     white-space: nowrap;
+    text-align: center;
     cursor: pointer;
   }
+  .btn-step {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .btn-step:disabled { opacity: 0.35; cursor: default; }
+
+  /* iOS는 16px 미만 입력창에 포커스하면 화면을 확대하므로 16px 유지 */
+  #answer-input,
+  .modal-box input,
+  .modal-box textarea,
+  .modal-box select,
+  .set-name-input { font-size: 16px; }
 
   /* 문제 번호 격자: 기본 접힘, 펼치면 최대 45vh 안에서 스크롤 */
   .problem-nav-row {

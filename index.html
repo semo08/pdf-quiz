@@ -173,7 +173,11 @@
       <div class="problem-tab-bar">
         <button id="btn-menu" class="btn-menu" aria-label="메뉴 열기">☰</button>
         <span id="problem-nav-label" class="problem-tab-label"></span>
-        <button id="btn-toggle-nav" class="btn-toggle-nav" aria-expanded="false"></button>
+        <div class="problem-step-group">
+          <button id="btn-prev-problem" class="btn-step" aria-label="이전 문제">‹</button>
+          <button id="btn-toggle-nav" class="btn-toggle-nav" aria-expanded="false"></button>
+          <button id="btn-next-problem" class="btn-step" aria-label="다음 문제">›</button>
+        </div>
         <div id="problem-nav" class="problem-nav-row"></div>
       </div>
       <main id="quiz-main">
