@@ -904,16 +904,39 @@ function normalizeAnswer(str) {
   return (str || '').toLowerCase().replace(/[()（）\s,，]/g, '').trim();
 }
 
+// 줄 앞의 글머리표 제거 ("• ① 기능" → "① 기능")
+// -, * 는 뒤에 공백이 있을 때만 제거 ("-8" 같은 정답을 보호)
+function stripBullets(str) {
+  return str.split(/\r?\n/)
+    .map(line => line.replace(/^\s*[•·‣◦∙]+\s*/, '').replace(/^\s*[-*]\s+/, ''))
+    .join('\n');
+}
+
+// "1." "2)" "(3)" 형태의 라벨 제거 (숫자 뒤 공백을 요구해 "3.14" 같은 값은 보호)
+const NUM_LABEL = /^\s*(?:\((\d{1,2})\)|(\d{1,2})[.)])\s+(?=\S)/;
+
 // 답을 항목 단위로 분리 (번호 라벨 기준 → 없으면 줄바꿈/쉼표 기준)
 function answerItems(str) {
-  const s = (str || '').trim();
+  const s = stripBullets((str || '').trim());
   const marks = s.match(ANSWER_MARKER);
   if (marks && marks.length >= 2) {
     const parts = s.split(ANSWER_MARKER).slice(1).map(normalizeAnswer);
     // 라벨 사이가 모두 채워져 있을 때만 라벨로 인정 (예: "① ③" 처럼 기호가 답인 경우 제외)
     if (parts.length && parts.every(Boolean)) return parts;
   }
-  return s.split(/\r?\n|[,，]/).map(normalizeAnswer).filter(Boolean);
+
+  let items = s.split(/\r?\n|[,，]/).map(x => x.trim()).filter(Boolean);
+  items = items.map(x => x.replace(NUM_LABEL, ''));
+
+  // 항목들이 "1 기능", "2 비기능" 처럼 1부터 순서대로 시작하면 그 숫자는 라벨로 간주
+  // (단일 항목이거나 순번이 아니면 그대로 둬서 "20 개월" 같은 답을 보호)
+  const isPlainNumbered = items.length >= 2 &&
+    items.every((x, i) => new RegExp(`^${i + 1}\\s+\\S`).test(x));
+  if (isPlainNumbered) {
+    items = items.map((x, i) => x.replace(new RegExp(`^${i + 1}\\s+`), ''));
+  }
+
+  return items.map(normalizeAnswer).filter(Boolean);
 }
 
 function isAnswerCorrect(userVal, correctVal) {
