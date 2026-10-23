@@ -858,7 +858,17 @@ function showProblem(probId) {
 
   document.getElementById('problem-badge').textContent = `${cat?.emoji || ''} ${cat?.name || p.category}`;
   document.getElementById('problem-counter').textContent = `${idx} / ${catProbs.length}`;
-  document.getElementById('strict-badge').classList.toggle('hidden', !isStrictFormatProblem(p));
+  // 채점이 엄격한 문제는 미리 알 수 있게 배지로 표시
+  const strictBadge = document.getElementById('strict-badge');
+  if (isStrictFormatProblem(p)) {
+    strictBadge.textContent = '서식 정확히';
+    strictBadge.classList.remove('hidden');
+  } else if (isCaseSensitiveProblem(p)) {
+    strictBadge.textContent = '대소문자 구분';
+    strictBadge.classList.remove('hidden');
+  } else {
+    strictBadge.classList.add('hidden');
+  }
   setMarkdownHtml(document.getElementById('problem-question'), p.question);
 
   const codeWrap  = document.getElementById('code-wrap');
@@ -900,9 +910,11 @@ function showProblem(probId) {
 // "기호로 쓰시오" 유형에서는 기호 자체가 정답이므로 분할 결과가 온전할 때만 라벨로 간주한다.
 const ANSWER_MARKER = /[①-⑳❶-❿]/g;
 
-// 괄호·공백·쉼표·대소문자 차이 무시
-function normalizeAnswer(str) {
-  return (str || '').toLowerCase().replace(/[()（）\s,，]/g, '').trim();
+// 괄호·공백·쉼표 차이 무시. 대소문자는 기본적으로 무시하되,
+// 코드 문제처럼 대소문자가 의미를 갖는 경우에는 보존한다.
+function normalizeAnswer(str, caseSensitive = false) {
+  const s = (str || '').replace(/[()（）\s,，]/g, '').trim();
+  return caseSensitive ? s : s.toLowerCase();
 }
 
 // 줄 앞의 글머리표 제거 ("• ① 기능" → "① 기능")
@@ -951,14 +963,14 @@ function splitTrailingParen(item) {
 }
 
 // 한 항목이 정답으로 인정받을 수 있는 표기들
-function answerVariants(item) {
+function answerVariants(item, caseSensitive) {
   const set = new Set();
-  const base = normalizeAnswer(item);
+  const base = normalizeAnswer(item, caseSensitive);
   if (base) set.add(base);
   const sp = splitTrailingParen(item);
   if (sp) {
-    const before = normalizeAnswer(sp.before);
-    const inside = normalizeAnswer(sp.inside);
+    const before = normalizeAnswer(sp.before, caseSensitive);
+    const inside = normalizeAnswer(sp.inside, caseSensitive);
     if (before) set.add(before);
     if (inside) set.add(inside);
   }
@@ -966,13 +978,22 @@ function answerVariants(item) {
 }
 
 // 구분자를 다르게 쓴 경우를 흡수하기 위한 평탄화 형태들
-function flatForms(items) {
+function flatForms(items, caseSensitive) {
+  const norm = x => normalizeAnswer(x, caseSensitive);
   const pick = fn => items.map(fn).join('');
   return new Set([
-    pick(normalizeAnswer),
-    pick(x => { const sp = splitTrailingParen(x); return normalizeAnswer(sp ? sp.before : x); }),
-    pick(x => { const sp = splitTrailingParen(x); return normalizeAnswer(sp ? sp.inside : x); }),
+    pick(norm),
+    pick(x => { const sp = splitTrailingParen(x); return norm(sp ? sp.before : x); }),
+    pick(x => { const sp = splitTrailingParen(x); return norm(sp ? sp.inside : x); }),
   ].filter(Boolean));
+}
+
+// 코드 문제는 대소문자가 의미를 가지므로 완화 대상에서 제외한다
+const CODE_LANGUAGES = ['c', 'java', 'python', 'sql'];
+function isCaseSensitiveProblem(p) {
+  if (!p) return false;
+  if (p.code) return true;
+  return CODE_LANGUAGES.includes(p.language || p.category);
 }
 
 // "출력 서식을 준수" 류의 문제는 서식까지 맞아야 하므로 정확 일치로 채점한다
@@ -986,7 +1007,10 @@ function normalizeStrict(str) {
   return (str || '').replace(/\r\n/g, '\n').split('\n').map(l => l.replace(/\s+$/, '')).join('\n').trim();
 }
 
-function isAnswerCorrect(userVal, correctVal, strict = false) {
+function isAnswerCorrect(userVal, correctVal, opts = {}) {
+  // 하위 호환: 세 번째 인자로 boolean(strict)을 넘기던 호출도 그대로 동작
+  const { strict = false, caseSensitive = false } = (typeof opts === 'boolean') ? { strict: opts } : opts;
+
   if (strict) {
     const u = normalizeStrict(userVal);
     return !!u && u === normalizeStrict(correctVal);
@@ -997,12 +1021,12 @@ function isAnswerCorrect(userVal, correctVal, strict = false) {
   // 항목별 비교 (번호 라벨 유무·줄바꿈 차이·괄호 병기 흡수, 순서는 유지)
   if (a.length === b.length &&
       a.every((v, i) => {
-        const u = normalizeAnswer(v);
-        return u && answerVariants(b[i]).has(u);
+        const u = normalizeAnswer(v, caseSensitive);
+        return u && answerVariants(b[i], caseSensitive).has(u);
       })) return true;
   // 한 줄로 몰아쓰기 등 구분자 차이 흡수
-  const fb = flatForms(b);
-  return [...flatForms(a)].some(v => fb.has(v));
+  const fb = flatForms(b, caseSensitive);
+  return [...flatForms(a, caseSensitive)].some(v => fb.has(v));
 }
 
 function checkAnswer() {
@@ -1014,7 +1038,8 @@ function checkAnswer() {
   if (!userVal.trim()) return;
 
   const strict = isStrictFormatProblem(p);
-  const correct = isAnswerCorrect(userVal, p.answer, strict);
+  const caseSensitive = isCaseSensitiveProblem(p);
+  const correct = isAnswerCorrect(userVal, p.answer, { strict, caseSensitive });
   const result   = document.getElementById('feedback-result');
   const feedback = document.getElementById('feedback');
   const btnExpl  = document.getElementById('btn-explanation');
@@ -1027,7 +1052,9 @@ function checkAnswer() {
   result.className = 'feedback-result ' + (correct ? 'correct' : 'wrong');
   result.textContent = correct
     ? '✅ 정답!'
-    : `❌ 틀렸어요 — 정답: ${p.answer}` + (strict ? '\n(출력 서식까지 정확히 일치해야 하는 문제예요)' : '');
+    : `❌ 틀렸어요 — 정답: ${p.answer}` +
+      (strict ? '\n(출력 서식까지 정확히 일치해야 하는 문제예요)'
+              : caseSensitive ? '\n(코드 문제라 대소문자까지 구분해서 채점해요)' : '');
 
   feedback.classList.remove('hidden');
   if (!correct && p.explanation) btnExpl.classList.remove('hidden');
