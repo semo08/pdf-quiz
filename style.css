@@ -618,6 +618,8 @@ body {
 .prob-btn:hover { background: var(--sidebar-hover-bg); color: var(--sidebar-text); }
 .prob-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .prob-btn.correct { background: rgba(22,163,74,0.25); color: #4ade80; border-color: rgba(22,163,74,0.4); }
+/* 즐겨찾기는 테두리로 표시 — 정답(초록 채움)·현재 문제(보라 채움)와 겹쳐도 함께 보이도록 뒤에 둔다 */
+.prob-btn.fav { border-color: #f59e0b; border-width: 2px; }
 
 .sidebar-footer {
   padding: 12px;

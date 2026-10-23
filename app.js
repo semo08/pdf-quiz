@@ -952,7 +952,7 @@ function renderProblemNav() {
   const probs = currentViewProblems();
   document.getElementById('problem-nav-label').textContent = currentViewLabel();
   document.getElementById('problem-nav').innerHTML = probs.map((p, i) =>
-    `<div class="prob-btn ${p.id === currentProbId ? 'active' : ''} ${progress[p.id] ? 'correct' : ''}"
+    `<div class="prob-btn ${p.id === currentProbId ? 'active' : ''} ${progress[p.id] ? 'correct' : ''} ${favIds[p.id] ? 'fav' : ''}"
           data-prob-id="${escHtml(String(p.id))}">${i + 1}</div>`
   ).join('');
   updateProblemNavToggle();
