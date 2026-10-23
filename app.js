@@ -638,6 +638,7 @@ function initQuizScreen() {
   });
   document.getElementById('btn-explanation').addEventListener('click', toggleExplanation);
   document.getElementById('btn-next').addEventListener('click', goNextProblem);
+  document.getElementById('btn-mark-correct').addEventListener('click', markAnswerCorrect);
   document.getElementById('btn-back-upload').addEventListener('click', () => {
     localStorage.removeItem(LS_ACTIVE_SET);
     resetUploadScreen();
@@ -902,6 +903,7 @@ function showProblem(probId) {
   btnExplEl.textContent = '해설 보기 ▼';
   document.getElementById('explanation-text').classList.add('hidden');
   document.getElementById('btn-next').classList.add('hidden');
+  document.getElementById('btn-mark-correct').classList.add('hidden');
   document.getElementById('quiz-main').scrollTop = 0; // 새 문제는 항상 맨 위부터
 }
 
@@ -1059,6 +1061,8 @@ function checkAnswer() {
   feedback.classList.remove('hidden');
   if (!correct && p.explanation) btnExpl.classList.remove('hidden');
   btnNext.classList.remove('hidden');
+  // 채점은 틀렸지만 본인 판단으로 맞다고 볼 수 있게 (표기 차이 등)
+  document.getElementById('btn-mark-correct').classList.toggle('hidden', correct);
 
   if (correct) {
     progress[p.id] = true;
@@ -1094,6 +1098,33 @@ function toggleExplanation() {
     btn.textContent = '해설 닫기 ▲';
     btn.classList.add('open');
   }
+}
+
+// 사용자가 직접 정답으로 인정 (채점 기준과 다르게 쓴 경우 등)
+function markAnswerCorrect() {
+  const p = appData.problems.find(p => p.id === currentProbId);
+  if (!p) return;
+
+  progress[p.id] = true;
+  if (currentSetId) localStorage.setItem(setProgKey(currentSetId), JSON.stringify(progress));
+
+  const wasWrong = !!wrongIds[p.id];
+  if (wasWrong) {
+    delete wrongIds[p.id];
+    saveWrong();
+  }
+
+  const result = document.getElementById('feedback-result');
+  result.className = 'feedback-result correct';
+  result.textContent = '✅ 정답 처리했어요' + (wasWrong ? ' — 오답 노트에서 제외됐어요' : '');
+
+  const input = document.getElementById('answer-input');
+  input.classList.remove('wrong');
+  input.classList.add('correct');
+
+  document.getElementById('btn-mark-correct').classList.add('hidden');
+  renderCategoryNav();
+  renderProblemNav();
 }
 
 function goNextProblem() {

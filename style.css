@@ -817,7 +817,22 @@ body {
 .explanation-text p { margin: 0 0 6px; }
 .explanation-text p:last-child { margin-bottom: 0; }
 
-.feedback-actions { display: flex; gap: 8px; }
+.feedback-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* 채점이 틀렸지만 본인 판단으로 정답 처리할 때 */
+.btn-mark-correct {
+  padding: 10px 16px;
+  background: transparent;
+  color: var(--success);
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.btn-mark-correct:hover { background: #f0fdf4; }
 
 /* ===== SHARED BUTTONS ===== */
 .btn-primary {
