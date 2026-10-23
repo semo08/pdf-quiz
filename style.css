@@ -503,8 +503,8 @@ body {
 }
 
 .sidebar-set-header {
-  padding: 8px 16px 4px;
-  font-size: 11px;
+  padding: 9px 16px 4px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -520,14 +520,39 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 16px 6px 26px;
+  padding: 8px 16px 8px 26px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--sidebar-muted);
   transition: background 0.1s;
 }
 .sidebar-cat-item:hover { background: var(--sidebar-hover-bg); color: var(--sidebar-text); }
 .sidebar-cat-item.active { background: var(--sidebar-active-bg); color: var(--sidebar-active-text); }
+
+/* 즐겨찾기 */
+.btn-fav {
+  margin-left: auto;
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.1s, transform 0.1s;
+}
+.btn-fav:hover { color: #f59e0b; transform: scale(1.12); }
+.btn-fav.on { color: #f59e0b; }
+
+.sidebar-cat-item.fav-note .cat-progress {
+  background: rgba(245,158,11,0.22);
+  color: #fcd34d;
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-weight: 700;
+  opacity: 1;
+}
+.sidebar-cat-item.fav-note.active { color: #fcd34d; }
 
 /* 오답 노트 */
 .sidebar-cat-item.wrong-note .cat-progress {
@@ -554,7 +579,7 @@ body {
 .sidebar-title {
   padding: 18px 16px 12px;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 15px;
   border-bottom: 1px solid rgba(255,255,255,0.07);
   flex-shrink: 0;
 }
@@ -574,7 +599,7 @@ body {
 }
 .cat-item:hover { background: var(--sidebar-hover-bg); color: var(--sidebar-text); }
 .cat-item.active { background: var(--sidebar-active-bg); color: var(--sidebar-active-text); }
-.cat-progress { font-size: 11px; opacity: 0.7; }
+.cat-progress { font-size: 12px; opacity: 0.7; }
 
 .prob-btn {
   width: 32px;
@@ -604,12 +629,12 @@ body {
 }
 .btn-sidebar-action {
   width: 100%;
-  padding: 8px;
+  padding: 9px;
   background: transparent;
   border: 1px solid rgba(255,255,255,0.15);
   border-radius: 6px;
   color: var(--sidebar-muted);
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.1s;
 }
@@ -660,7 +685,6 @@ body {
 .feedback-result { white-space: pre-line; }
 
 .btn-edit-problem {
-  margin-left: auto;
   padding: 3px 10px;
   font-size: 12px;
   border: 1px solid var(--border);

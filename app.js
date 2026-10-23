@@ -201,12 +201,16 @@ const LS_ACTIVE_SET = 'jegi-active-set';
 const setDataKey = id => `jegi-set-${id}`;
 const setProgKey = id => `jegi-prog-${id}`;
 const setWrongKey = id => `jegi-wrong-${id}`;
+const setFavKey = id => `jegi-fav-${id}`;
 
 // ===== 오답 노트 =====
 // 문제집별로 틀린 문제 id를 저장하고, 다시 맞히면 즉시 제거한다.
 const WRONG_VIEW_ID = '__wrong__';
+const FAV_VIEW_ID = '__fav__';
 let wrongIds = {};          // 현재 문제집의 오답 { [problemId]: true }
-let wrongViewList = [];     // 오답 노트를 열었을 때의 목록 스냅샷 (푸는 중 목록이 흔들리지 않도록)
+let favIds = {};            // 현재 문제집의 즐겨찾기 { [problemId]: true }
+let specialViewList = [];   // 오답 노트·즐겨찾기를 열었을 때의 목록 스냅샷
+                            // (푸는 중에 목록이 흔들리지 않도록 고정)
 
 function readWrong(setId) {
   try { return JSON.parse(localStorage.getItem(setWrongKey(setId))) || {}; }
@@ -214,6 +218,17 @@ function readWrong(setId) {
 }
 function saveWrong() {
   if (currentSetId) localStorage.setItem(setWrongKey(currentSetId), JSON.stringify(wrongIds));
+}
+function readFav(setId) {
+  try { return JSON.parse(localStorage.getItem(setFavKey(setId))) || {}; }
+  catch { return {}; }
+}
+function saveFav() {
+  if (currentSetId) localStorage.setItem(setFavKey(currentSetId), JSON.stringify(favIds));
+}
+function favCount(setId, setData) {
+  const ids = setId === currentSetId ? favIds : readFav(setId);
+  return setData.problems.filter(p => ids[p.id]).length;
 }
 function wrongCount(setId, setData) {
   const ids = setId === currentSetId ? wrongIds : readWrong(setId);
@@ -223,8 +238,8 @@ function wrongCount(setId, setData) {
 
 // 지금 화면에 보여줄 문제 목록 (카테고리 또는 오답 노트)
 function currentViewProblems() {
-  if (currentCatId === WRONG_VIEW_ID) {
-    return wrongViewList
+  if (currentCatId === WRONG_VIEW_ID || currentCatId === FAV_VIEW_ID) {
+    return specialViewList
       .map(id => appData.problems.find(p => String(p.id) === String(id)))
       .filter(Boolean);
   }
@@ -233,6 +248,7 @@ function currentViewProblems() {
 
 function currentViewLabel() {
   if (currentCatId === WRONG_VIEW_ID) return '오답 노트';
+  if (currentCatId === FAV_VIEW_ID) return '즐겨찾기';
   const cat = appData.categories.find(c => c.id === currentCatId);
   return cat?.name || currentCatId || '';
 }
@@ -285,6 +301,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentSetId = activeId;
         progress = JSON.parse(localStorage.getItem(setProgKey(activeId)) || '{}');
         wrongIds = readWrong(activeId);
+        favIds = readFav(activeId);
         startQuiz();
         return;
       } catch {}
@@ -340,6 +357,7 @@ function initInlineReplacements() {
   bind('btn-save-json', downloadCurrentSetJSON);
   bind('btn-print-pdf', openPrintModal);
   bind('btn-edit-problem', openEditModalFromQuiz);
+  bind('btn-fav', toggleFavorite);
   bind('btn-copy', copyCode);
   document.querySelectorAll('.btn-preview-toggle[data-field]').forEach(btn =>
     btn.addEventListener('click', () => toggleEditPreview(btn.dataset.field))
@@ -390,6 +408,7 @@ function loadSet(setId) {
   currentSetId = setId;
   progress = JSON.parse(localStorage.getItem(setProgKey(setId)) || '{}');
   wrongIds = readWrong(setId);
+  favIds = readFav(setId);
   startQuiz();
 }
 
@@ -404,6 +423,7 @@ function deleteSetEntry(e, setId) {
   localStorage.removeItem(setDataKey(setId));
   localStorage.removeItem(setProgKey(setId));
   localStorage.removeItem(setWrongKey(setId));
+  localStorage.removeItem(setFavKey(setId));
   if (localStorage.getItem(LS_ACTIVE_SET) === setId) localStorage.removeItem(LS_ACTIVE_SET);
   renderSavedSets();
 }
@@ -504,6 +524,7 @@ async function handleJSONFile(file) {
     currentSetId = setId;
     progress = {};
     wrongIds = {};
+    favIds = {};
     startQuiz();
   } catch {
     alert('올바른 문제집 JSON 파일이 아닙니다.');
@@ -706,6 +727,7 @@ function saveAndStart() {
   currentSetId = setId;
   progress = {};
   wrongIds = {};
+  favIds = {};
   startQuiz();
 }
 
@@ -859,9 +881,20 @@ function renderCategoryNav() {
         </div>`
       : '';
 
+    // 즐겨찾기 (별을 단 문제가 있을 때만 노출)
+    const favN = favCount(setMeta.id, setData);
+    const favRow = favN > 0
+      ? `<div class="sidebar-cat-item fav-note ${isActiveSet && currentCatId === FAV_VIEW_ID ? 'active' : ''}"
+              data-set-id="${escHtml(setMeta.id)}" data-cat-id="${FAV_VIEW_ID}">
+          <span>⭐ 즐겨찾기</span>
+          <span class="cat-progress">${favN}</span>
+        </div>`
+      : '';
+
     return `<div class="sidebar-set-group">
       <div class="sidebar-set-header ${isActiveSet ? 'active' : ''}">${escHtml(setMeta.name)}</div>
       ${catRows}
+      ${favRow}
       ${wrongRow}
     </div>`;
   }).join('');
@@ -875,6 +908,7 @@ function selectCategoryInSet(setId, catId) {
     currentSetId = setId;
     progress = JSON.parse(localStorage.getItem(setProgKey(setId)) || '{}');
     wrongIds = readWrong(setId);
+    favIds = readFav(setId);
     localStorage.setItem(LS_ACTIVE_SET, setId);
   }
   selectCategory(catId);
@@ -884,7 +918,9 @@ function selectCategory(catId) {
   currentCatId = catId;
   // 오답 노트는 열 때의 목록을 고정 (푸는 도중 항목이 사라져 순서가 흔들리지 않도록)
   if (catId === WRONG_VIEW_ID) {
-    wrongViewList = appData.problems.filter(p => wrongIds[p.id]).map(p => p.id);
+    specialViewList = appData.problems.filter(p => wrongIds[p.id]).map(p => p.id);
+  } else if (catId === FAV_VIEW_ID) {
+    specialViewList = appData.problems.filter(p => favIds[p.id]).map(p => p.id);
   }
   renderCategoryNav();
   renderProblemNav();
@@ -902,11 +938,14 @@ function showEmptyView() {
   document.getElementById('problem-question').innerHTML =
     currentCatId === WRONG_VIEW_ID
       ? '<p>🎉 오답 노트가 비었습니다. 틀린 문제를 모두 다시 맞혔어요!</p>'
-      : '<p>표시할 문제가 없습니다.</p>';
+      : currentCatId === FAV_VIEW_ID
+        ? '<p>⭐ 즐겨찾기한 문제가 없습니다. 문제 위의 별을 눌러 추가하세요.</p>'
+        : '<p>표시할 문제가 없습니다.</p>';
   document.getElementById('code-wrap').className = 'code-wrap hidden';
   document.getElementById('answer-area').classList.add('hidden');
   document.getElementById('feedback').classList.add('hidden');
   document.getElementById('btn-edit-problem').classList.add('hidden');
+  document.getElementById('btn-fav').classList.add('hidden');
 }
 
 function renderProblemNav() {
@@ -925,11 +964,12 @@ function showProblem(probId) {
   currentProbId = probId;
 
   // 오답 노트를 보고 있으면 뷰를 유지하고, 아니면 문제가 속한 카테고리로 맞춘다
-  if (currentCatId !== WRONG_VIEW_ID) currentCatId = p.category;
+  if (currentCatId !== WRONG_VIEW_ID && currentCatId !== FAV_VIEW_ID) currentCatId = p.category;
 
   // 빈 화면 상태에서 복귀
   document.getElementById('answer-area').classList.remove('hidden');
   document.getElementById('btn-edit-problem').classList.remove('hidden');
+  document.getElementById('btn-fav').classList.remove('hidden');
 
   renderCategoryNav();
   renderProblemNav();
@@ -985,6 +1025,7 @@ function showProblem(probId) {
   document.getElementById('explanation-text').classList.add('hidden');
   document.getElementById('btn-next').classList.add('hidden');
   document.getElementById('btn-mark-correct').classList.add('hidden');
+  updateFavButton();
   document.getElementById('quiz-main').scrollTop = 0; // 새 문제는 항상 맨 위부터
 }
 
@@ -1179,6 +1220,25 @@ function toggleExplanation() {
     btn.textContent = '해설 닫기 ▲';
     btn.classList.add('open');
   }
+}
+
+// ===== 즐겨찾기 =====
+function toggleFavorite() {
+  if (currentProbId == null) return;
+  if (favIds[currentProbId]) delete favIds[currentProbId];
+  else favIds[currentProbId] = true;
+  saveFav();
+  updateFavButton();
+  renderCategoryNav();
+}
+
+function updateFavButton() {
+  const btn = document.getElementById('btn-fav');
+  const on = currentProbId != null && !!favIds[currentProbId];
+  btn.textContent = on ? '★' : '☆';
+  btn.classList.toggle('on', on);
+  btn.setAttribute('aria-pressed', String(on));
+  btn.title = on ? '즐겨찾기 해제' : '즐겨찾기';
 }
 
 // 사용자가 직접 정답으로 인정 (채점 기준과 다르게 쓴 경우 등)
