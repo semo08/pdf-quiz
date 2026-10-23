@@ -257,6 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initUploadScreen();
   initReviewScreen();
   initQuizScreen();
+  initInlineReplacements();
 
   migrateOldData();
 
@@ -277,6 +278,20 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   renderSavedSets();
 });
+
+// CSP에서 인라인 스크립트를 금지했으므로, 기존 onclick 속성을 리스너로 대체
+function initInlineReplacements() {
+  const bind = (id, fn) => document.getElementById(id)?.addEventListener('click', fn);
+  bind('btn-copy-prompt', copyParsingPrompt);
+  bind('btn-prompt-more', togglePromptView);
+  bind('btn-save-json', downloadCurrentSetJSON);
+  bind('btn-print-pdf', openPrintModal);
+  bind('btn-edit-problem', openEditModalFromQuiz);
+  bind('btn-copy', copyCode);
+  document.querySelectorAll('.btn-preview-toggle[data-field]').forEach(btn =>
+    btn.addEventListener('click', () => toggleEditPreview(btn.dataset.field))
+  );
+}
 
 // ===== SCREEN HELPERS =====
 // data-* 속성값은 항상 문자열이므로 원본 id 타입(숫자/문자열)으로 되돌려 조회
@@ -397,7 +412,8 @@ function handlePDFFiles(files) {
     btnParse.classList.add('hidden');
     return;
   }
-  listEl.innerHTML = selectedPDFFiles.map(f => `<div class="file-ok">✓ ${f.name}</div>`).join('');
+  // 파일명도 신뢰할 수 없는 입력 (macOS·Linux는 파일명에 < > 를 허용)
+  listEl.innerHTML = selectedPDFFiles.map(f => `<div class="file-ok">✓ ${escHtml(f.name)}</div>`).join('');
   btnParse.classList.remove('hidden');
 
   // PDF 파일명에서 기본 문제집 이름 생성
@@ -496,7 +512,7 @@ function renderReviewTable() {
     const qPreview = (p.question || '').replace(/\n/g, ' ').slice(0, 60);
     return `<tr>
       <td>${i + 1}</td>
-      <td>${cat?.emoji || ''} ${cat?.name || p.category}</td>
+      <td>${escHtml(cat?.emoji || '')} ${escHtml(cat?.name || p.category)}</td>
       <td title="${escHtml(p.question || '')}">${escHtml(qPreview)}${p.question?.length > 60 ? '…' : ''}</td>
       <td class="td-code">${p.code ? '있음' : '—'}</td>
       <td>${escHtml(p.answer || '—')}</td>
@@ -519,7 +535,7 @@ function openEditModal(problemId) {
   ['question', 'explanation'].forEach(field => {
     document.getElementById(`edit-${field}-preview`).classList.add('hidden');
     document.getElementById(`edit-${field}`).classList.remove('hidden');
-    document.querySelector(`[onclick="toggleEditPreview('${field}')"]`).textContent = '미리보기';
+    document.getElementById(`btn-preview-${field}`).textContent = '미리보기';
   });
   document.getElementById('edit-modal').classList.remove('hidden');
 }
@@ -527,7 +543,7 @@ function openEditModal(problemId) {
 function toggleEditPreview(field) {
   const textarea = document.getElementById(`edit-${field}`);
   const preview  = document.getElementById(`edit-${field}-preview`);
-  const btn      = document.querySelector(`[onclick="toggleEditPreview('${field}')"]`);
+  const btn      = document.getElementById(`btn-preview-${field}`);
   const isPreview = !preview.classList.contains('hidden');
   if (isPreview) {
     preview.classList.add('hidden');

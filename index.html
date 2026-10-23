@@ -2,6 +2,18 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
+  <!-- 인라인 스크립트 실행을 차단해, 혹시 HTML 이스케이프가 빠지더라도 XSS가 실행되지 않도록 함 -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'none';
+    script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
+    worker-src 'self' blob:;
+    connect-src 'self' https://cdnjs.cloudflare.com;
+    style-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline';
+    font-src https://cdn.jsdelivr.net;
+    img-src 'self' data:;
+    base-uri 'none';
+    form-action 'none';
+    object-src 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PDF-Quiz</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"
@@ -47,7 +59,7 @@
             <span class="ai-prompt-badge">권장</span>
             <span>AI 파싱 프롬프트</span>
           </div>
-          <button class="btn-copy-prompt" id="btn-copy-prompt" onclick="copyParsingPrompt()">프롬프트 복사</button>
+          <button class="btn-copy-prompt" id="btn-copy-prompt">프롬프트 복사</button>
         </div>
         <div class="ai-prompt-desc-area">
           파싱 품질이 중요하다면 AI를 추천해요.<br>AI에 문제 PDF + 이 프롬프트를 주면 표·코드·해설까지 JSON으로 변환할 수 있습니다.
@@ -55,7 +67,7 @@
         <div class="ai-prompt-body hidden" id="ai-prompt-body">
           <pre id="ai-prompt-text" class="ai-prompt-text"></pre>
         </div>
-        <button class="btn-prompt-more" id="btn-prompt-more" onclick="togglePromptView()">∨ 프롬프트 보기</button>
+        <button class="btn-prompt-more" id="btn-prompt-more">∨ 프롬프트 보기</button>
       </div>
 
       <div id="saved-sets-section" class="saved-sets-section hidden">
@@ -112,7 +124,7 @@
       </label>
       <div class="edit-field-header">
         <span>문제 (질문)</span>
-        <button type="button" class="btn-preview-toggle" onclick="toggleEditPreview('question')">미리보기</button>
+        <button type="button" class="btn-preview-toggle" id="btn-preview-question" data-field="question">미리보기</button>
       </div>
       <textarea id="edit-question" rows="3"></textarea>
       <div id="edit-question-preview" class="edit-preview hidden"></div>
@@ -125,7 +137,7 @@
       </label>
       <div class="edit-field-header">
         <span>해설 (없으면 비워두기)</span>
-        <button type="button" class="btn-preview-toggle" onclick="toggleEditPreview('explanation')">미리보기</button>
+        <button type="button" class="btn-preview-toggle" id="btn-preview-explanation" data-field="explanation">미리보기</button>
       </div>
       <textarea id="edit-explanation" rows="4"></textarea>
       <div id="edit-explanation-preview" class="edit-preview hidden"></div>
@@ -161,8 +173,8 @@
         <nav id="category-nav"></nav>
       </div>
       <div class="sidebar-footer">
-        <button id="btn-save-json" class="btn-sidebar-action" onclick="downloadCurrentSetJSON()">💾 JSON 저장</button>
-        <button id="btn-print-pdf" class="btn-sidebar-action" onclick="openPrintModal()">🖨 PDF 출력</button>
+        <button id="btn-save-json" class="btn-sidebar-action">💾 JSON 저장</button>
+        <button id="btn-print-pdf" class="btn-sidebar-action">🖨 PDF 출력</button>
         <button id="btn-back-upload" class="btn-sidebar-action">⬆ 문제집 바꾸기</button>
       </div>
     </aside>
@@ -185,7 +197,7 @@
           <span id="problem-badge" class="badge"></span>
           <span id="problem-counter" class="problem-counter"></span>
           <span id="strict-badge" class="badge-strict hidden">서식 정확히</span>
-          <button id="btn-edit-problem" class="btn-edit-problem" onclick="openEditModalFromQuiz()">편집</button>
+          <button id="btn-edit-problem" class="btn-edit-problem">편집</button>
         </div>
 
         <p id="problem-question" class="problem-question"></p>
@@ -193,7 +205,7 @@
         <div id="code-wrap" class="code-wrap hidden">
           <div class="code-header">
             <span id="code-lang-label" class="code-lang"></span>
-            <button class="btn-copy" id="btn-copy" onclick="copyCode()">복사</button>
+            <button class="btn-copy" id="btn-copy">복사</button>
           </div>
           <pre><code id="code-content"></code></pre>
         </div>
@@ -221,12 +233,7 @@
   <!-- pdf.js 4.x는 ESM만 제공하므로 모듈로 불러와 전역에 노출 -->
   <link rel="modulepreload" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs"
         integrity="sha384-+0ti2moQlmLN7WZHE2RHIf5lV8hHxhxEalN0il3YZceG26fUPyOkR0hp9daxk1i7" crossorigin="anonymous" />
-  <script type="module">
-    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs';
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
-    window.pdfjsLib = pdfjsLib;
-  </script>
+  <script type="module" src="pdf-loader.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
           integrity="sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp"
           crossorigin="anonymous"></script>
