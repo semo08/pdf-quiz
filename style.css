@@ -646,6 +646,19 @@ body {
 
 .problem-counter { font-size: 13px; color: var(--text-muted); }
 
+/* "출력 서식을 준수" 류 문제 표시 — 정확 일치로 채점됨 */
+.badge-strict {
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.feedback-result { white-space: pre-line; }
+
 .btn-edit-problem {
   margin-left: auto;
   padding: 3px 10px;

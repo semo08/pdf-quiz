@@ -858,6 +858,7 @@ function showProblem(probId) {
 
   document.getElementById('problem-badge').textContent = `${cat?.emoji || ''} ${cat?.name || p.category}`;
   document.getElementById('problem-counter').textContent = `${idx} / ${catProbs.length}`;
+  document.getElementById('strict-badge').classList.toggle('hidden', !isStrictFormatProblem(p));
   setMarkdownHtml(document.getElementById('problem-question'), p.question);
 
   const codeWrap  = document.getElementById('code-wrap');
@@ -915,14 +916,14 @@ function stripBullets(str) {
 // "1." "2)" "(3)" 형태의 라벨 제거 (숫자 뒤 공백을 요구해 "3.14" 같은 값은 보호)
 const NUM_LABEL = /^\s*(?:\((\d{1,2})\)|(\d{1,2})[.)])\s+(?=\S)/;
 
-// 답을 항목 단위로 분리 (번호 라벨 기준 → 없으면 줄바꿈/쉼표 기준)
+// 답을 항목 단위로 분리 (번호 라벨 기준 → 없으면 줄바꿈/쉼표 기준). 원문 그대로 반환.
 function answerItems(str) {
   const s = stripBullets((str || '').trim());
   const marks = s.match(ANSWER_MARKER);
   if (marks && marks.length >= 2) {
-    const parts = s.split(ANSWER_MARKER).slice(1).map(normalizeAnswer);
+    const parts = s.split(ANSWER_MARKER).slice(1).map(x => x.trim());
     // 라벨 사이가 모두 채워져 있을 때만 라벨로 인정 (예: "① ③" 처럼 기호가 답인 경우 제외)
-    if (parts.length && parts.every(Boolean)) return parts;
+    if (parts.length && parts.every(x => normalizeAnswer(x))) return parts;
   }
 
   let items = s.split(/\r?\n|[,，]/).map(x => x.trim()).filter(Boolean);
@@ -936,17 +937,72 @@ function answerItems(str) {
     items = items.map((x, i) => x.replace(new RegExp(`^${i + 1}\\s+`), ''));
   }
 
-  return items.map(normalizeAnswer).filter(Boolean);
+  return items.filter(x => normalizeAnswer(x));
 }
 
-function isAnswerCorrect(userVal, correctVal) {
+// 항목 끝에 붙은 괄호는 병기 표기로 본다 ("애자일(Agile)" → 애자일 / Agile 둘 다 정답)
+// 수식 속 괄호("( 대기 시간 + 서비스 시간 ) / 서비스 시간", "(30,000 / 300) / 5 = 20")는
+// 괄호가 끝에 오지 않으므로 병기로 오인하지 않는다.
+function splitTrailingParen(item) {
+  const m = (item || '').trim().match(/^(.*\S)\s*[(（]([^()（）]*)[)）]\s*$/);
+  if (!m) return null;
+  const before = m[1].trim(), inside = m[2].trim();
+  return (before && inside) ? { before, inside } : null;
+}
+
+// 한 항목이 정답으로 인정받을 수 있는 표기들
+function answerVariants(item) {
+  const set = new Set();
+  const base = normalizeAnswer(item);
+  if (base) set.add(base);
+  const sp = splitTrailingParen(item);
+  if (sp) {
+    const before = normalizeAnswer(sp.before);
+    const inside = normalizeAnswer(sp.inside);
+    if (before) set.add(before);
+    if (inside) set.add(inside);
+  }
+  return set;
+}
+
+// 구분자를 다르게 쓴 경우를 흡수하기 위한 평탄화 형태들
+function flatForms(items) {
+  const pick = fn => items.map(fn).join('');
+  return new Set([
+    pick(normalizeAnswer),
+    pick(x => { const sp = splitTrailingParen(x); return normalizeAnswer(sp ? sp.before : x); }),
+    pick(x => { const sp = splitTrailingParen(x); return normalizeAnswer(sp ? sp.inside : x); }),
+  ].filter(Boolean));
+}
+
+// "출력 서식을 준수" 류의 문제는 서식까지 맞아야 하므로 정확 일치로 채점한다
+const STRICT_FORMAT_RE = /(출력\s*)?(서식|형식)[을를]?\s*(반드시\s*)?(지켜|준수)/;
+function isStrictFormatProblem(p) {
+  return STRICT_FORMAT_RE.test(p?.question || '');
+}
+
+// 정확 일치용 정규화 (줄 끝 공백·개행 방식만 정리, 대소문자·공백·괄호는 보존)
+function normalizeStrict(str) {
+  return (str || '').replace(/\r\n/g, '\n').split('\n').map(l => l.replace(/\s+$/, '')).join('\n').trim();
+}
+
+function isAnswerCorrect(userVal, correctVal, strict = false) {
+  if (strict) {
+    const u = normalizeStrict(userVal);
+    return !!u && u === normalizeStrict(correctVal);
+  }
   const a = answerItems(userVal);
   const b = answerItems(correctVal);
   if (!a.length || !b.length) return false;
-  // 항목별 비교 (번호 라벨 유무·줄바꿈 차이 흡수, 순서는 유지)
-  if (a.length === b.length && a.every((v, i) => v === b[i])) return true;
-  // 구분자를 다르게 쓴 경우까지 흡수 (한 줄로 몰아쓰기 등)
-  return a.join('') === b.join('');
+  // 항목별 비교 (번호 라벨 유무·줄바꿈 차이·괄호 병기 흡수, 순서는 유지)
+  if (a.length === b.length &&
+      a.every((v, i) => {
+        const u = normalizeAnswer(v);
+        return u && answerVariants(b[i]).has(u);
+      })) return true;
+  // 한 줄로 몰아쓰기 등 구분자 차이 흡수
+  const fb = flatForms(b);
+  return [...flatForms(a)].some(v => fb.has(v));
 }
 
 function checkAnswer() {
@@ -957,7 +1013,8 @@ function checkAnswer() {
   const userVal = input.value;
   if (!userVal.trim()) return;
 
-  const correct = isAnswerCorrect(userVal, p.answer);
+  const strict = isStrictFormatProblem(p);
+  const correct = isAnswerCorrect(userVal, p.answer, strict);
   const result   = document.getElementById('feedback-result');
   const feedback = document.getElementById('feedback');
   const btnExpl  = document.getElementById('btn-explanation');
@@ -970,7 +1027,7 @@ function checkAnswer() {
   result.className = 'feedback-result ' + (correct ? 'correct' : 'wrong');
   result.textContent = correct
     ? '✅ 정답!'
-    : `❌ 틀렸어요 — 정답: ${p.answer}`;
+    : `❌ 틀렸어요 — 정답: ${p.answer}` + (strict ? '\n(출력 서식까지 정확히 일치해야 하는 문제예요)' : '');
 
   feedback.classList.remove('hidden');
   if (!correct && p.explanation) btnExpl.classList.remove('hidden');
