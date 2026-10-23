@@ -54,17 +54,28 @@ function setMarkdownHtml(el, src) {
   });
 }
 
+// 이미지는 data: URL 만 허용한다. 외부 주소를 허용하면 문제집 파일만으로
+// 열람 사실이 외부 서버에 알려질 수 있으므로(추적 픽셀) 아예 제거한다.
+const SAFE_IMG_SRC = /^data:image\/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=]+$/;
+if (typeof DOMPurify !== 'undefined') {
+  DOMPurify.addHook('afterSanitizeAttributes', node => {
+    if (node.tagName === 'IMG' && !SAFE_IMG_SRC.test(node.getAttribute('src') || '')) {
+      node.remove();
+    }
+  });
+}
+
 // 문제/해설 텍스트 렌더링 진입점
 // 문제집 JSON은 외부(AI 변환 결과·공유받은 파일)에서 올 수 있으므로 반드시 sanitize 후 삽입
 function renderMarkdown(src) {
-  const html = marked.parse(escapeLeadingTags(src || ''));
+  const html = marked.parse(escapeLeadingTags(resolveImageRefs(src || '')));
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: [
       'p', 'br', 'hr', 'strong', 'em', 'del', 'code', 'pre', 'blockquote',
       'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span'
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'img'
     ],
-    ALLOWED_ATTR: ['class'],
+    ALLOWED_ATTR: ['class', 'src', 'alt'],
   });
 }
 
@@ -251,13 +262,16 @@ function migrateOldData() {
 }
 
 // ===== INIT =====
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('ai-prompt-text').textContent = AI_PARSING_PROMPT;
+
+  await loadImageCache(); // 문제 본문의 img: 참조를 동기 렌더링에서 바로 쓰려면 먼저 올려둬야 함
 
   initUploadScreen();
   initReviewScreen();
   initQuizScreen();
   initInlineReplacements();
+  initImagePaste();
 
   migrateOldData();
 
@@ -278,6 +292,45 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   renderSavedSets();
 });
+
+// 편집 모달의 textarea 에 이미지를 붙여넣기·드롭하면 저장 후 참조를 삽입
+function initImagePaste() {
+  document.querySelectorAll('textarea[data-img-target]').forEach(ta => {
+    ta.addEventListener('paste', e => {
+      const file = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith('image/'));
+      if (file) { e.preventDefault(); insertImageInto(ta, file); }
+    });
+    ta.addEventListener('dragover', e => { e.preventDefault(); ta.classList.add('img-drop'); });
+    ta.addEventListener('dragleave', () => ta.classList.remove('img-drop'));
+    ta.addEventListener('drop', e => {
+      const file = [...(e.dataTransfer?.files || [])].find(f => f.type.startsWith('image/'));
+      ta.classList.remove('img-drop');
+      if (file) { e.preventDefault(); insertImageInto(ta, file); }
+    });
+  });
+}
+
+async function insertImageInto(textarea, file) {
+  const prev = textarea.value;
+  try {
+    textarea.disabled = true;
+    const dataUrl = await fileToDataUrl(file);
+    const id = await putImage(uid(), dataUrl);
+    const ref = `
+
+![그림](img:${id})
+
+`;
+    const at = textarea.selectionStart ?? prev.length;
+    textarea.value = prev.slice(0, at) + ref + prev.slice(at);
+    textarea.setSelectionRange(at + ref.length, at + ref.length);
+  } catch (err) {
+    alert('이미지를 넣지 못했습니다: ' + err.message);
+  } finally {
+    textarea.disabled = false;
+    textarea.focus();
+  }
+}
 
 // CSP에서 인라인 스크립트를 금지했으므로, 기존 onclick 속성을 리스너로 대체
 function initInlineReplacements() {
@@ -344,6 +397,10 @@ function deleteSetEntry(e, setId) {
   e.stopPropagation();
   if (!confirm('이 문제집을 삭제할까요?')) return;
   saveSetsIndex(getSetsIndex().filter(s => s.id !== setId));
+  try {
+    const raw = localStorage.getItem(setDataKey(setId));
+    if (raw) deleteImagesForSet(JSON.parse(raw));
+  } catch {}
   localStorage.removeItem(setDataKey(setId));
   localStorage.removeItem(setProgKey(setId));
   localStorage.removeItem(setWrongKey(setId));
@@ -427,6 +484,14 @@ async function handleJSONFile(file) {
     const text = await file.text();
     const data = JSON.parse(text);
     if (!data.problems || !data.categories) throw new Error('형식 오류');
+
+    // 이미지는 localStorage 한도(약 5MB)를 넘기므로 IndexedDB로 분리 저장
+    if (data.images && typeof data.images === 'object') {
+      for (const [id, dataUrl] of Object.entries(data.images)) {
+        if (typeof dataUrl === 'string' && SAFE_IMG_SRC.test(dataUrl)) await putImage(id, dataUrl);
+      }
+      delete data.images;
+    }
 
     const setId = uid();
     const name = file.name.replace('.json', '');
@@ -1155,7 +1220,13 @@ function downloadCurrentSetJSON() {
   if (!currentSetId) return;
   const meta = getSetsIndex().find(s => s.id === currentSetId);
   const name = meta?.name || '문제집';
-  const blob = new Blob([JSON.stringify(appData, null, 2)], { type: 'application/json' });
+  // 다른 기기에서도 그림이 보이도록 참조된 이미지를 함께 담는다
+  const images = {};
+  for (const id of imageRefsInSet(appData)) {
+    if (imageCache[id]) images[id] = imageCache[id];
+  }
+  const payload = Object.keys(images).length ? { ...appData, images } : appData;
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

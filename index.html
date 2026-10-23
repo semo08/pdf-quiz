@@ -126,8 +126,9 @@
         <span>문제 (질문)</span>
         <button type="button" class="btn-preview-toggle" id="btn-preview-question" data-field="question">미리보기</button>
       </div>
-      <textarea id="edit-question" rows="3"></textarea>
+      <textarea id="edit-question" rows="3" data-img-target="1"></textarea>
       <div id="edit-question-preview" class="edit-preview hidden"></div>
+      <div class="img-hint">그림은 캡처 후 이 칸에 <strong>Ctrl+V</strong> 로 붙여넣거나 파일을 끌어다 놓으세요</div>
 
       <label>코드 (없으면 비워두기)
         <textarea id="edit-code" rows="8" class="code-textarea"></textarea>
@@ -139,8 +140,9 @@
         <span>해설 (없으면 비워두기)</span>
         <button type="button" class="btn-preview-toggle" id="btn-preview-explanation" data-field="explanation">미리보기</button>
       </div>
-      <textarea id="edit-explanation" rows="4"></textarea>
+      <textarea id="edit-explanation" rows="4" data-img-target="1"></textarea>
       <div id="edit-explanation-preview" class="edit-preview hidden"></div>
+      <div class="img-hint">해설에도 같은 방식으로 그림을 넣을 수 있어요</div>
       <div class="modal-actions">
         <button id="btn-modal-delete" class="btn-danger">삭제</button>
         <button id="btn-modal-cancel" class="btn-secondary">취소</button>
@@ -243,6 +245,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.4.16/purify.min.js"
           integrity="sha384-a7SzOxErzJ3ZpQz0zJ32d67dSitNzPcbfybc/ykU9KJhMgZkwqfSxlhhdJRS+XGL"
           crossorigin="anonymous"></script>
+  <script src="images.js"></script>
   <script src="parser.js"></script>
   <script src="app.js"></script>
 </body>

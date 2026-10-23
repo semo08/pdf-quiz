@@ -925,9 +925,39 @@ body {
     color: #000;
     margin-bottom: 8px;
   }
+  .print-question img, .print-explanation img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 8px 0;
+    break-inside: avoid;
+  }
   .print-answer { font-size: 13px; margin-bottom: 6px; color: #000; }
   .print-explanation { font-size: 12px; color: #333; line-height: 1.5; }
   @page { margin: 15mm; }
+}
+
+/* 문제·해설 속 그림 */
+.problem-question img,
+.explanation-text img,
+.edit-preview img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.img-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: -6px;
+}
+textarea.img-drop {
+  border-color: var(--accent);
+  background: #faf5ff;
 }
 
 /* 마크다운 표는 좁은 화면에서 가로 스크롤 (본문이 잘리지 않도록) */
